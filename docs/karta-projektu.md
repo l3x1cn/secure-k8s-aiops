@@ -2,18 +2,18 @@
 
 ## Zespół
 
-Nazwa zespołu: _do uzupełnienia_
+Nazwa zespołu: Abordaż
 
 | Rola | Osoba | Odpowiada za |
 |---|---|---|
-| R1 Platforma i lider techniczny | _do uzupełnienia_ | klaster kind z Cilium, powtarzalne wdrożenie, CI/CD i obrazy, logi, overlay chmurowy, IaC; prowadzi sprinty |
-| R2 Bezpieczeństwo | _do uzupełnienia_ | model zagrożeń, RBAC, NetworkPolicy, Pod Security, sekrety, CI, testy bezpieczeństwa, raport testów |
-| R3 Obserwowalność (SRE) | _do uzupełnienia_ | usługi demonstracyjne, Prometheus, alerty, Grafana, generator ruchu, dokumentacja i demo |
-| R4 AI/ML | _do uzupełnienia_ | awarie i scenariusze, dane i cechy, model detekcji, serwis detektora, ewaluacja |
+| R1 Platforma i lider techniczny | Michal S. | klaster kind z Cilium, powtarzalne wdrożenie, CI/CD i obrazy, logi, overlay chmurowy, IaC; prowadzi sprinty |
+| R2 Bezpieczeństwo | Michal S. | model zagrożeń, RBAC, NetworkPolicy, Pod Security, sekrety, CI, testy bezpieczeństwa, raport testów |
+| R3 Obserwowalność (SRE) | Szymon P. | usługi demonstracyjne, Prometheus, alerty, Grafana, generator ruchu, dokumentacja i demo |
+| R4 AI/ML | Szymon P. | awarie i scenariusze, dane i cechy, model detekcji, serwis detektora, ewaluacja |
 
 ## Temat
 
-Nr _do uzupełnienia_ — Bezpieczna platforma Kubernetes z obserwowalnością AI
+Nr 8 — Bezpieczna platforma Kubernetes z obserwowalnością AI
 
 ## Problem biznesowy
 
