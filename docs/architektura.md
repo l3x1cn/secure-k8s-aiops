@@ -6,7 +6,7 @@ Ten dokument to wspólny kontrakt dla zadań T01–T36. Zmiana kontraktu wymaga 
 
 | Komponent | Wersja | Namespace | Zadanie |
 |---|---|---|---|
-| kind, obraz węzła `kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5` | 0.33.0 | — | T03 |
+| kind, obraz węzła `kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed` | 0.33.0 | — | T03 |
 | Cilium + Hubble (relay, UI, metryki) | 1.20.3 | kube-system | T03 |
 | prometheus-operator-crds | przypięta w `platform/versions.env` | — | T03 |
 | kube-prometheus-stack (Prometheus, Alertmanager, Grafana) | przypięta w `versions.env` | monitoring | T16 |
@@ -22,6 +22,8 @@ Narzędzia CLI w `mise.toml` (T02): Python 3.13.16, kind 0.33.0, kubectl 1.37.1,
 
 Wersje oznaczone „przypięta” wybiera się w dniu realizacji zadania (najnowsza stabilna) i wpisuje do `platform/versions.env`. Trivy nigdy w wersji 0.69.4 (złośliwe wydanie, CVE-2026-33634).
 
+Kubernetes 1.36 zamiast 1.37 to świadomy downgrade o jedną wersję (T03). kind 0.33.0 domyślnie stawia Kubernetes 1.37.0, ale Cilium 1.20 deklaruje testy e2e tylko dla Kubernetes 1.33–1.36 ([wymagania Cilium 1.20](https://docs.cilium.io/en/v1.20/network/kubernetes/requirements/)), więc węzły używają obrazu `kindest/node:v1.36.4`, zbudowanego dla kind 0.33.0. kubectl 1.37.1 z `mise.toml` zostaje, bo odchylenie o jedną wersję jest dozwolone. Na 1.37 przechodzimy, gdy przypięta wersja Cilium obejmie ją testami.
+
 ## Namespace'y i Pod Security
 
 | Namespace | Zawartość | PSA `enforce` |
@@ -34,6 +36,8 @@ Wersje oznaczone „przypięta” wybiera się w dniu realizacji zadania (najnow
 | kube-system | Cilium, Hubble, CoreDNS | bez zmian |
 
 ## Dostęp z hosta
+
+Klaster kind `secure-k8s-aiops` (kontekst kubectl `kind-secure-k8s-aiops`) tworzy `make cluster` (T03).
 
 Nie ma kontrolera Ingress (Ingress NGINX wycofano w marcu 2026); w demo wystarcza NodePort. Mapowania `extraPortMappings` w kind nasłuchują tylko na `127.0.0.1`.
 
@@ -71,6 +75,7 @@ Używamy wyłącznie `networking.k8s.io/v1` NetworkPolicy, żeby te same manifes
 
 - **Aplikacje.** `http_requests_total{method,route,status}`, histogram `http_request_duration_seconds` i domyślne metryki procesu z `prometheus_client`. ServiceMonitor nadaje etykiety `namespace` i `service`.
 - **Logi.** Jedna linia JSON na zdarzenie, pola: `ts`, `level` (`DEBUG`, `INFO`, `WARNING`, `ERROR`), `service`, `route`, `status`, `duration_ms`, `msg`.
+- **Cilium i Hubble (T03).** CRD prometheus-operator instaluje T03 (chart `prometheus-operator-crds`, wersja w `platform/versions.env`), więc kube-prometheus-stack (T16) instaluje się bez CRD. ServiceMonitory w `kube-system`, bez dodatkowych etykiet: `cilium-agent` (port 9962), `cilium-operator` (9963) i `hubble` (9965); Prometheus (T16) wybiera ServiceMonitory ze wszystkich namespace'ów, bez filtra etykiet. Metryki Hubble `dns`, `drop`, `tcp`, `flow`, `port-distribution` i `icmp` mają etykiety `source_namespace`, `source_workload`, `destination_namespace` i `destination_workload` (puste, gdy końcem przepływu nie jest pod). Odrzucenia przez NetworkPolicy to `hubble_drop_total{reason="POLICY_DENIED"}`.
 - **Reguły nagrywające (T16).** Etykieta `service` ∈ {frontend, orders}, krok 30 s. To jedyne wejście dla alertów regułowych i cech ML:
 
 | Reguła | Znaczenie |
