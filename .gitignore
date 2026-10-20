@@ -1,0 +1,13 @@
+# Python
+.venv/
+__pycache__/
+
+# Dane i wyniki generowane lokalnie
+aiops/data/
+reports/
+
+# Sekrety i dostęp do klastra
+*.env
+kubeconfig*
+# Wyjątek: wersje chartów i obrazów (T04) są częścią repozytorium
+!platform/versions.env

@@ -1,0 +1,16 @@
+[project]
+name = "secure-k8s-aiops"
+version = "0.1.0"
+description = "Bezpieczna platforma Kubernetes z obserwowalnością AI"
+requires-python = "==3.13.*"
+dependencies = []
+
+[tool.uv]
+# Katalog główny to korzeń workspace'u, nie pakiet.
+package = false
+
+[tool.uv.workspace]
+# Zadanie, które tworzy pakiet Pythona (np. services/frontend w T05, chaos w T08,
+# aiops w T20), dopisuje tu jego katalog razem z jego pyproject.toml.
+# Katalog z tej listy bez pyproject.toml przerywa `uv sync`.
+members = []
