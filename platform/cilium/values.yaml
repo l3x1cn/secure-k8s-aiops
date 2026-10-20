@@ -1,0 +1,34 @@
+# Wartości chartu Cilium (T03). Wersja chartu: CILIUM_VERSION w platform/versions.env; instalacja: make cluster.
+# ServiceMonitory wymagają CRD monitoring.coreos.com/v1 zainstalowanych przed Cilium (chart prometheus-operator-crds).
+ipam:
+  mode: kubernetes # CIDR-y podów przydziela Kubernetes (podSubnet kind)
+image:
+  pullPolicy: IfNotPresent
+# Metryki agenta i operatora z ServiceMonitorami (Prometheus w T16).
+prometheus:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+operator:
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+hubble:
+  enabled: true
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+  metrics:
+    # Kontekst źródła i celu jako osobne etykiety (docs.cilium.io: Hubble metrics → Context Options).
+    # Kontrakt dla reguł T16 (service:policy_drops:rate1m) opisuje docs/architektura.md.
+    enabled:
+      - "dns:labelsContext=source_namespace,source_workload,destination_namespace,destination_workload"
+      - "drop:labelsContext=source_namespace,source_workload,destination_namespace,destination_workload"
+      - "tcp:labelsContext=source_namespace,source_workload,destination_namespace,destination_workload"
+      - "flow:labelsContext=source_namespace,source_workload,destination_namespace,destination_workload"
+      - "port-distribution:labelsContext=source_namespace,source_workload,destination_namespace,destination_workload"
+      - "icmp:labelsContext=source_namespace,source_workload,destination_namespace,destination_workload"
+    serviceMonitor:
+      enabled: true
