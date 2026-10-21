@@ -17,7 +17,7 @@ doctor:
 	@bash scripts/doctor.sh
 
 # Klaster kind z Cilium i Hubble. Idempotentny: istniejącego klastra nie tworzy ponownie,
-# a helm upgrade --install doprowadza CRD i Cilium do wersji z platform/versions.env.
+# a helm upgrade --install doprowadza CRD i Cilium do wersji i digestów z platform/versions.env.
 # CRD prometheus-operator (ServiceMonitor) muszą istnieć przed instalacją Cilium.
 # Po Cilium stosuje NetworkPolicy Hubble (platform/cilium/hubble-networkpolicy.yaml): do Relay tylko z Hubble UI.
 cluster:
@@ -26,10 +26,10 @@ cluster:
 	else \
 		kind create cluster --name '$(CLUSTER_NAME)' --config platform/kind/cluster.yaml; \
 	fi
-	helm upgrade --install prometheus-operator-crds $(PROMETHEUS_OPERATOR_CRDS_CHART) \
+	helm upgrade --install prometheus-operator-crds $(PROMETHEUS_OPERATOR_CRDS_CHART)@$(PROMETHEUS_OPERATOR_CRDS_CHART_DIGEST) \
 		--version $(PROMETHEUS_OPERATOR_CRDS_VERSION) \
 		--kube-context $(KUBE_CONTEXT) --namespace kube-system --wait
-	helm upgrade --install cilium $(CILIUM_CHART) \
+	helm upgrade --install cilium $(CILIUM_CHART)@$(CILIUM_CHART_DIGEST) \
 		--version $(CILIUM_VERSION) \
 		--kube-context $(KUBE_CONTEXT) --namespace kube-system \
 		--values platform/cilium/values.yaml --wait --timeout 10m
