@@ -46,7 +46,7 @@ Nie ma kontrolera Ingress (Ingress NGINX wycofano w marcu 2026); w demo wystarcz
 | http://localhost:8080 | frontend | NodePort 30080 |
 | http://localhost:3000 | Grafana | NodePort 30300 |
 | http://localhost:8025 | Mailpit UI | NodePort 30825 |
-| `make hubble-ui`, `make prometheus`, `make alertmanager` | Hubble UI, Prometheus, Alertmanager | port-forward |
+| `make hubble-ui`, `make hubble-relay`, `make prometheus`, `make alertmanager` | Hubble UI, Hubble CLI (relay, localhost:4245), Prometheus, Alertmanager | port-forward |
 
 ## Przepływy sieciowe
 

@@ -10,7 +10,7 @@ KUBE_CONTEXT := kind-$(CLUSTER_NAME)
 CILIUM_CHART := oci://quay.io/cilium/charts/cilium
 PROMETHEUS_OPERATOR_CRDS_CHART := oci://ghcr.io/prometheus-community/charts/prometheus-operator-crds
 
-.PHONY: doctor cluster hubble-ui
+.PHONY: doctor cluster hubble-ui hubble-relay
 
 # Sprawdza narzędzia z mise.toml, dostęp do Dockera bez sudo, pamięć Dockera i limity inotify.
 doctor:
@@ -34,7 +34,13 @@ cluster:
 		--values platform/cilium/values.yaml --wait --timeout 10m
 	cilium status --context $(KUBE_CONTEXT) --wait
 	kubectl --context $(KUBE_CONTEXT) wait --for=condition=Ready nodes --all --timeout=5m
+	@echo "Klaster gotowy. Hubble UI: make hubble-ui. Hubble CLI: make hubble-relay (osobny terminal), potem hubble observe."
 
 # Hubble UI w przeglądarce: port-forward na localhost:12000, Ctrl+C kończy.
 hubble-ui:
 	cilium hubble ui --context $(KUBE_CONTEXT)
+
+# Hubble Relay dla CLI: port-forward na localhost:4245 (domyślny adres hubble), Ctrl+C kończy.
+# W osobnym terminalu: hubble observe --last 20
+hubble-relay:
+	cilium hubble port-forward --context $(KUBE_CONTEXT)
