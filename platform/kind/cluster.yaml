@@ -1,0 +1,28 @@
+# Klaster kind (T03). Twórz przez `make cluster`: Makefile nadaje nazwę i instaluje Cilium.
+# Bez domyślnego CNI węzły są NotReady, dopóki Cilium nie wystartuje.
+# Kubernetes 1.36 zamiast domyślnego w kind 0.33.0 1.37: Cilium 1.20 jest testowany na 1.33–1.36 (docs/architektura.md).
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  disableDefaultCNI: true
+nodes:
+  - role: control-plane
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+    # NodePorty z docs/architektura.md („Dostęp z hosta”), dostępne tylko z 127.0.0.1.
+    extraPortMappings:
+      - containerPort: 30080 # frontend
+        hostPort: 8080
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+      - containerPort: 30300 # Grafana
+        hostPort: 3000
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+      - containerPort: 30825 # Mailpit UI
+        hostPort: 8025
+        listenAddress: "127.0.0.1"
+        protocol: TCP
+  - role: worker
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed
+  - role: worker
+    image: kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed

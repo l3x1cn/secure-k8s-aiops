@@ -1,0 +1,23 @@
+# NetworkPolicy dla Hubble (T03); stosuje ją make cluster po instalacji Cilium.
+# Hubble Relay i Hubble UI nie mają uwierzytelnienia: do Relay wpuszczamy tylko Hubble UI (gRPC, 4245), do UI nic.
+# Port-forward (make hubble-ui, make hubble-relay) i sondy kubeleta działają dalej: Cilium domyślnie wpuszcza ruch z hosta.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: hubble-relay-ui-ingress
+  namespace: kube-system
+spec:
+  podSelector:
+    matchExpressions:
+      - key: k8s-app
+        operator: In
+        values: [hubble-relay, hubble-ui]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              k8s-app: hubble-ui
+      ports:
+        - protocol: TCP
+          port: 4245

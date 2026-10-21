@@ -30,6 +30,16 @@ uv sync        # Python 3.13 i zależności w .venv
 
 `make` używa narzędzi z `mise.toml` także bez aktywacji mise w powłoce. Poza `make` (np. `kubectl`, `uv sync`) aktywuj mise według [instrukcji](https://mise.jdx.dev/getting-started.html) albo poprzedzaj polecenia `mise exec --`.
 
+## Klaster lokalny
+
+```bash
+make cluster     # kind (control-plane + 2 workery) z Cilium i Hubble; ponowne uruchomienie jest bezpieczne
+make hubble-ui   # Hubble UI w przeglądarce (port-forward na localhost:12000, Ctrl+C kończy)
+make hubble-relay # Hubble Relay na localhost:4245 dla CLI (port-forward, Ctrl+C kończy); w drugim terminalu: hubble observe --last 20
+```
+
+`make cluster` tworzy klaster kind `secure-k8s-aiops` i kontekst kubectl `kind-secure-k8s-aiops`. Porty 8080, 3000 i 8025 na `127.0.0.1` muszą być wolne. Usunięcie klastra: `kind delete cluster --name secure-k8s-aiops`.
+
 ## Jak pracujemy
 
 - Każde zadanie to issue `Txx`. Gałąź `txx-krotki-opis`, PR z `Closes #N`.
