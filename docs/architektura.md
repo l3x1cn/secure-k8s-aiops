@@ -71,6 +71,8 @@ Testy (T12) sprawdzają, że te przepływy są odrzucane:
 
 Używamy wyłącznie `networking.k8s.io/v1` NetworkPolicy, żeby te same manifesty działały w chmurze (T29).
 
+W kube-system NetworkPolicy `hubble-relay-ui-ingress` (T03, `platform/cilium/hubble-networkpolicy.yaml`, stosuje ją `make cluster`) dopuszcza do Hubble Relay tylko ruch z Hubble UI na porcie 4245, a do Hubble UI nie dopuszcza ruchu z podów. Dostęp z hosta zostaje przez port-forward (`make hubble-ui`, `make hubble-relay`). Nowy klient Hubble Relay w klastrze wymaga reguły w tej polityce. Agent i operator Cilium działają w sieci hosta, więc NetworkPolicy ich nie obejmuje: metryki na portach 9962, 9963 i 9965 są czytelne z każdego poda (ryzyko szczątkowe, T07).
+
 ## Kontrakt metryk i logów
 
 - **Aplikacje.** `http_requests_total{method,route,status}`, histogram `http_request_duration_seconds` i domyślne metryki procesu z `prometheus_client`. ServiceMonitor nadaje etykiety `namespace` i `service`.

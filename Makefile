@@ -19,6 +19,7 @@ doctor:
 # Klaster kind z Cilium i Hubble. Idempotentny: istniejącego klastra nie tworzy ponownie,
 # a helm upgrade --install doprowadza CRD i Cilium do wersji z platform/versions.env.
 # CRD prometheus-operator (ServiceMonitor) muszą istnieć przed instalacją Cilium.
+# Po Cilium stosuje NetworkPolicy Hubble (platform/cilium/hubble-networkpolicy.yaml): do Relay tylko z Hubble UI.
 cluster:
 	@if kind get clusters | grep -qx '$(CLUSTER_NAME)'; then \
 		echo "Klaster $(CLUSTER_NAME) już istnieje."; \
@@ -32,6 +33,7 @@ cluster:
 		--version $(CILIUM_VERSION) \
 		--kube-context $(KUBE_CONTEXT) --namespace kube-system \
 		--values platform/cilium/values.yaml --wait --timeout 10m
+	kubectl --context $(KUBE_CONTEXT) apply -f platform/cilium/hubble-networkpolicy.yaml
 	cilium status --context $(KUBE_CONTEXT) --wait
 	kubectl --context $(KUBE_CONTEXT) wait --for=condition=Ready nodes --all --timeout=5m
 	@echo "Klaster gotowy. Hubble UI: make hubble-ui. Hubble CLI: make hubble-relay (osobny terminal), potem hubble observe."
