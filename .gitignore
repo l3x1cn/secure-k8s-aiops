@@ -11,4 +11,4 @@ reports/
 kubeconfig*
 # Wyjątek: wersje chartów i obrazów (T04) są częścią repozytorium
 !platform/versions.env
-.av/local.toml
+.av/
