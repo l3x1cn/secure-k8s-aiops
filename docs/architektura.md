@@ -69,8 +69,8 @@ Używamy wyłącznie `networking.k8s.io/v1` NetworkPolicy, żeby te same manifes
 
 ## Kontrakt metryk i logów
 
-- **Aplikacje.** `http_requests_total{method,route,status}`, histogram `http_request_duration_seconds` i domyślne metryki procesu z `prometheus_client`. ServiceMonitor nadaje etykiety `namespace` i `service`.
-- **Logi.** Jedna linia JSON na zdarzenie, pola: `ts`, `level` (`DEBUG`, `INFO`, `WARNING`, `ERROR`), `service`, `route`, `status`, `duration_ms`, `msg`.
+- **Aplikacje.** `http_requests_total{method,route,status}`, histogram `http_request_duration_seconds{method,route}` (kubełki z granicą 0.3 s, progiem HighLatency) i domyślne metryki procesu z `prometheus_client`. `route` to szablon trasy (`/orders/{order_id}`), dla nieznanych ścieżek `unmatched`. Żądania `/healthz` i `/metrics` nie trafiają do metryk ani logów żądań. ServiceMonitor nadaje etykiety `namespace` i `service`. Implementacja: pakiet `libs/observability` (T05).
+- **Logi.** Jedna linia JSON na zdarzenie na stdout, pola: `ts`, `level` (`DEBUG`, `INFO`, `WARNING`, `ERROR`), `service`, `route`, `status`, `duration_ms`, `msg`. Pola spoza żądania (`route`, `status`, `duration_ms`) mają wartość `null`; wyjątek dodaje pole `exc` ze śladem stosu. Żądania z odpowiedzią 4xx mają `level` = `WARNING`, 5xx = `ERROR`.
 - **Reguły nagrywające (T16).** Etykieta `service` ∈ {frontend, orders}, krok 30 s. To jedyne wejście dla alertów regułowych i cech ML:
 
 | Reguła | Znaczenie |
@@ -116,7 +116,7 @@ Sekrety tworzy `make secrets` (T14) i nigdy nie trafiają do git.
 
 | Secret | Namespace | Klucze | Użycie |
 |---|---|---|---|
-| `orders-api-token` | shop | `token` | frontend → orders (`Authorization: Bearer`) |
+| `orders-api-token` | shop | `token` | frontend → orders (`Authorization: Bearer`); obie usługi czytają go ze zmiennej `ORDERS_API_TOKEN` |
 | `fault-token` | shop, loadgen | `token` (ta sama wartość) | fault-runner → orders (`X-Fault-Token`) |
 | `grafana-admin` | monitoring | `admin-user`, `admin-password` | logowanie do Grafany |
 
@@ -147,7 +147,9 @@ Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FA
 │   ├── overlays/local/    # kind (T04)
 │   ├── overlays/cloud/    # zarządzany Kubernetes (T29)
 │   └── observability/     # values chartów, reguły, dashboardy (T16–T19, T22)
-├── services/
+├── libs/
+│   └── observability/     # wspólny kontrakt metryk i logów JSON dla usług (T05)
+├── services/              # obrazy budowane z korzenia: docker build -f services/<nazwa>/Dockerfile .
 │   ├── frontend/          # (T05)
 │   └── orders/            # (T05, T08)
 ├── aiops/                 # pakiet aiops: cechy, model, detektor, ewaluacja (T20–T25, T30)

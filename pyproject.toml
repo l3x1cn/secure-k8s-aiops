@@ -3,7 +3,8 @@ name = "secure-k8s-aiops"
 version = "0.1.0"
 description = "Bezpieczna platforma Kubernetes z obserwowalnością AI"
 requires-python = "==3.13.*"
-dependencies = []
+# Pakiety workspace'u jako zależności korzenia: `uv sync` instaluje je do .venv.
+dependencies = ["frontend", "orders"]
 
 [tool.uv]
 # Katalog główny to korzeń workspace'u, nie pakiet.
@@ -13,4 +14,19 @@ package = false
 # Zadanie, które tworzy pakiet Pythona (np. services/frontend w T05, chaos w T08,
 # aiops w T20), dopisuje tu jego katalog razem z jego pyproject.toml.
 # Katalog z tej listy bez pyproject.toml przerywa `uv sync`.
-members = []
+members = ["libs/observability", "services/frontend", "services/orders"]
+
+[tool.uv.sources]
+frontend = { workspace = true }
+orders = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.16.0",
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["libs", "services"]
+# Usługi mają osobne katalogi tests/ z plikami o tych samych nazwach.
+addopts = ["--import-mode=importlib"]

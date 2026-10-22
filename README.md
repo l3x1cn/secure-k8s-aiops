@@ -30,6 +30,18 @@ uv sync        # Python 3.13 i zależności w .venv
 
 `make` używa narzędzi z `mise.toml` także bez aktywacji mise w powłoce. Poza `make` (np. `kubectl`, `uv sync`) aktywuj mise według [instrukcji](https://mise.jdx.dev/getting-started.html) albo poprzedzaj polecenia `mise exec --`.
 
+## Usługi
+
+`frontend` i `orders` (FastAPI) słuchają na porcie 8080 i wymagają zmiennej `ORDERS_API_TOKEN`. Wspólny kod metryk i logów jest w `libs/observability`.
+
+```bash
+uv run pytest                                         # testy jednostkowe usług
+docker build -f services/orders/Dockerfile -t ghcr.io/l3x1cn/secure-k8s-aiops/orders:dev .
+ORDERS_API_TOKEN=dev uv run python -m frontend        # uruchomienie lokalne
+```
+
+Manifesty są w `deploy/base/{frontend,orders}`; tag obrazu ustawia overlay.
+
 ## Jak pracujemy
 
 - Każde zadanie to issue `Txx`. Gałąź `txx-krotki-opis`, PR z `Closes #N`.
