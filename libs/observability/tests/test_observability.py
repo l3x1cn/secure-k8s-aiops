@@ -77,6 +77,14 @@ def test_unknown_paths_share_one_label(client):
     assert requests_total("GET", "unmatched", "404") == before + 2
 
 
+def test_unknown_methods_share_one_label(client):
+    before = requests_total("OTHER", "/items/{item_id}", "405")
+    assert client.request("AAAA", "/items/x").status_code == 405
+    client.request("BBBB", "/items/x")
+    assert requests_total("OTHER", "/items/{item_id}", "405") == before + 2
+    assert requests_total("AAAA", "/items/{item_id}", "405") == 0.0
+
+
 def test_probes_and_scrapes_are_not_counted(client):
     before = (
         requests_total("GET", "/healthz", "200"),

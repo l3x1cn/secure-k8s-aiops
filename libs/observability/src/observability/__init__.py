@@ -18,6 +18,10 @@ __all__ = ["JsonFormatter", "instrument", "setup_logging"]
 _UNOBSERVED_ROUTES = frozenset({"/healthz", "/metrics"})
 # Żądania, które nie pasują do żadnej trasy; jedna etykieta zamiast surowych ścieżek.
 _UNMATCHED_ROUTE = "unmatched"
+# Serwer przyjmuje dowolną nazwę metody; spoza tej listy liczymy jako OTHER,
+# żeby klient nie mógł tworzyć nowych serii metryk bez ograniczenia.
+_KNOWN_METHODS = frozenset({"GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
+_OTHER_METHOD = "OTHER"
 # Granica 0.3 s pokrywa się z progiem alertu HighLatency.
 _DURATION_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.2, 0.3, 0.5, 0.75, 1.0, 2.0, 5.0)
 
@@ -102,8 +106,9 @@ def instrument(app: FastAPI) -> None:
             return response
 
         status = response.status_code
-        HTTP_REQUESTS.labels(request.method, route, str(status)).inc()
-        HTTP_REQUEST_DURATION.labels(request.method, route).observe(duration)
+        method = request.method if request.method in _KNOWN_METHODS else _OTHER_METHOD
+        HTTP_REQUESTS.labels(method, route, str(status)).inc()
+        HTTP_REQUEST_DURATION.labels(method, route).observe(duration)
         level = (
             logging.ERROR
             if status >= 500
