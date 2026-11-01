@@ -117,12 +117,19 @@ Sekrety tworzy `make secrets` (T14) i nigdy nie trafiają do git.
 | Secret | Namespace | Klucze | Użycie |
 |---|---|---|---|
 | `orders-api-token` | shop | `token` | frontend → orders (`Authorization: Bearer`); obie usługi czytają go ze zmiennej `ORDERS_API_TOKEN` |
-| `fault-token` | shop, loadgen | `token` (ta sama wartość) | fault-runner → orders (`X-Fault-Token`) |
+| `fault-token` | shop, loadgen | `token` (ta sama wartość) | fault-runner → orders (`X-Fault-Token`); orders czyta go ze zmiennej `FAULT_TOKEN`, fault-runner z pliku `/var/run/secrets/fault-token/token` |
 | `grafana-admin` | monitoring | `admin-user`, `admin-password` | logowanie do Grafany |
 
 ## Scenariusze awarii
 
-Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FAULTS_ENABLED=true` (overlay `local`) i wymagają nagłówka `X-Fault-Token`. `POST /faults/stop` kończy bieżącą awarię.
+Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FAULTS_ENABLED=true` (overlay `local`; w `base` jest `false`, a endpointy zwracają wtedy 404) i wymagają nagłówka `X-Fault-Token` (brak lub zły token: 403). `POST /faults/stop` kończy bieżącą awarię.
+
+- Naraz działa jedna awaria; nowa zastępuje bieżącą. Awaria kończy się sama po `seconds` (domyślne wartości jak w tabeli, zakres 1–3600).
+- Odpowiedź: 202 i `{"fault": "<nazwa>", "ends_at": "<czas UTC>"}`; `stop` zwraca 200 i `{"stopped": "<nazwa>"}` albo `null`.
+- `errors` (`ratio` ∈ (0, 1]) i `latency` (`ms` ∈ [1, 10000]) działają na trasach `/orders`. Odsetek błędów jest deterministyczny: przy `ratio=0.5` co druga odpowiedź to 500.
+- `memory` (`target_ratio` ∈ (0, 0.95]) zajmuje `target_ratio × memory.max − memory.current` z cgroup v2; bez limitu pamięci kontenera zwraca 409.
+- `crash` kończy proces kodem 1 zaraz po wysłaniu odpowiedzi 202; powtórzenia S5 planuje orkiestrator (T21).
+- Klient: `fault-runner fault <nazwa> [--seconds N] [--param k=v]`, `fault-runner stop`, `fault-runner spike --users N --seconds S` w podzie `loadgen/fault-runner` (`kubectl exec`).
 
 | ID | Nazwa | Cel | Mechanizm | Czas | Oczekiwane alerty |
 |---|---|---|---|---|---|
