@@ -14,3 +14,15 @@ package = false
 # aiops w T20), dopisuje tu jego katalog razem z jego pyproject.toml.
 # Katalog z tej listy bez pyproject.toml przerywa `uv sync`.
 members = []
+
+[dependency-groups]
+# Notebooki aiops/notebooks (T09): `uv run jupyter nbconvert --to notebook --execute <plik>`.
+# numpy/pandas/scikit-learn przejdą do zależności pakietu aiops w T20.
+dev = [
+    "ipykernel>=7.4.0",
+    "matplotlib>=3.11.2",
+    "nbconvert>=7.17.2",
+    "numpy>=2.5.4",
+    "pandas>=3.1.0",
+    "scikit-learn>=1.9.1",
+]

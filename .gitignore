@@ -1,6 +1,8 @@
 # Python
 .venv/
 __pycache__/
+# Kopie z `jupyter nbconvert --execute` bez --inplace
+*.nbconvert.ipynb
 
 # Dane i wyniki generowane lokalnie
 aiops/data/
