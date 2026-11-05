@@ -1,0 +1,25 @@
+# Dependabot (T06): co tydzień akcje GitHub (SHA i komentarz wersji w .github/workflows) i zależności
+# Pythona z uv.lock. Cooldown 7 dni: nowe wydanie trafia do PR po tygodniu, gdy przejęte wydanie zwykle
+# jest już wycofane (trivy-action, CVE-2026-33634); aktualizacji bezpieczeństwa cooldown nie opóźnia.
+# Narzędzi z mise.toml (w tym ruff) Dependabot nie obsługuje: podbijamy je ręcznie PR-em.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+  - package-ecosystem: uv
+    directory: "/"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    # Pakiety workspace'u uv (pyproject.toml). Dependabot szuka ich na PyPI
+    # (dependabot/dependabot-core#14004), a pod nazwami chaos i frontend są tam obce pakiety.
+    ignore:
+      - dependency-name: chaos
+      - dependency-name: frontend
+      - dependency-name: orders
+      - dependency-name: observability
