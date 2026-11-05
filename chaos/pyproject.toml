@@ -1,0 +1,18 @@
+[project]
+name = "chaos"
+version = "0.1.0"
+description = "fault-runner: awarie w orders i skok ruchu na frontend"
+requires-python = "==3.13.*"
+dependencies = [
+    "httpx>=0.28.1",
+]
+
+[project.scripts]
+fault-runner = "fault_runner.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "fault_runner"
