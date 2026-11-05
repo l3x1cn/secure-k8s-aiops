@@ -1,0 +1,13 @@
+[project]
+name = "observability"
+version = "0.1.0"
+description = "Wspólny kontrakt metryk i logów JSON dla usług (docs/architektura.md)"
+requires-python = "==3.13.*"
+dependencies = [
+    "fastapi>=0.159.1",
+    "prometheus-client>=0.26.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.1,<0.14"]
+build-backend = "uv_build"
