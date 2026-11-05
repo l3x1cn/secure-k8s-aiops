@@ -22,9 +22,17 @@ frontend = { workspace = true }
 orders = { workspace = true }
 
 [dependency-groups]
+# Notebooki aiops/notebooks (T09): `uv run jupyter nbconvert --to notebook --execute <plik>`.
+# numpy/pandas/scikit-learn przejdą do zależności pakietu aiops w T20.
 dev = [
     "httpx2>=2.16.0",
+    "ipykernel>=7.4.0",
+    "matplotlib>=3.11.2",
+    "nbconvert>=7.17.2",
+    "numpy>=2.5.4",
+    "pandas>=3.1.0",
     "pytest>=9.1.1",
+    "scikit-learn>=1.9.1",
 ]
 
 [tool.pytest.ini_options]
