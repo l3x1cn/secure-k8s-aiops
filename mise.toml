@@ -2,12 +2,14 @@
 # Zmiana wersji: PR, który aktualizuje też „Komponenty i wersje” w docs/architektura.md.
 # Nowe narzędzie dopisz też do tabeli w scripts/doctor.sh.
 # Tylko min_version i [tools] ze zwykłymi wersjami: plik nie wymaga `mise trust`.
-# min_version to też wersja mise w CI (input version akcji jdx/mise-action w .github/workflows/ci.yml): zmieniaj razem.
-min_version = "2026.10.13"
+# min_version to też wersja mise w CI (zmienna CI_MISE_VERSION w .github/workflows/ci.yml, input version akcji jdx/mise-action): zmieniaj razem.
+# mise.lock (sumy kontrolne narzędzi, generowany): zmiana wersji w [tools] wymaga w tym samym PR wygenerowania go od nowa:
+# `mise lock --platform linux-x64,linux-arm64,macos-x64,macos-arm64`. Z tym plikiem jdx/mise-action instaluje z `--locked`.
+min_version = "2026.10.25"
 
 [tools]
 python = "3.13.16"
-uv = "0.13.1"
+uv = "0.13.7"
 ruff = "0.17.3"
 kind = "0.33.0"
 kubectl = "1.37.1"

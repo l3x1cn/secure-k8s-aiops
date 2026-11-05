@@ -21,7 +21,8 @@ doctor:
 	@bash scripts/doctor.sh
 
 # Kontrole CI (T06): każdy cel to jeden job w .github/workflows/ci.yml; lokalnie te same polecenia i wersje z mise.toml.
-# Lint i formatowanie Pythona (job lint): ruff, reguły w pyproject.toml; obejmuje też notebooki.
+# Lint i formatowanie Pythona (job lint): ruff, reguły w pyproject.toml; obejmuje też notebooki i bloki ```python w plikach .md (README, docs/):
+# od ruff 0.16 `ruff format` domyślnie formatuje je w Markdownie, więc PR tylko z dokumentacją z niesformatowanym blokiem nie przejdzie lint.
 lint:
 	ruff check
 	ruff format --check
@@ -31,9 +32,11 @@ unit:
 	uv run --locked pytest
 
 # Sekrety w całej historii HEAD (job secrets): gitleaks z domyślnymi regułami; --redact ukrywa wartości w logu.
+# Commity scalające są skanowane względem pierwszego rodzica (--diff-merges=first-parent): bez tego gitleaks
+# pomija ich diff, a treść dodana przy rozwiązywaniu konfliktu nie byłaby sprawdzona.
 # Tylko historia HEAD (w PR: main + commity PR), więc sekret na innej gałęzi nie blokuje cudzych PR.
 gitleaks:
-	gitleaks git --no-banner --redact --verbose --log-opts=HEAD .
+	gitleaks git --no-banner --redact --verbose --log-opts="--diff-merges=first-parent HEAD" .
 
 # Manifesty (job manifests): kustomize build każdego overlayu z deploy/overlays → kubeconform -strict (scripts/manifests.sh).
 manifests:

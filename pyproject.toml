@@ -12,7 +12,8 @@ package = false
 
 [tool.uv.workspace]
 # Zadanie, które tworzy pakiet Pythona (np. services/frontend w T05, chaos w T08,
-# aiops w T20), dopisuje tu jego katalog razem z jego pyproject.toml.
+# aiops w T20), dopisuje tu jego katalog razem z jego pyproject.toml,
+# a nazwę pakietu do ignore w .github/dependabot.yml.
 # Katalog z tej listy bez pyproject.toml przerywa `uv sync`.
 members = ["chaos", "libs/observability", "services/frontend", "services/orders"]
 
@@ -43,10 +44,13 @@ testpaths = ["chaos", "libs", "services"]
 addopts = ["--import-mode=importlib"]
 
 [tool.ruff]
-# `make lint` i job lint w CI (T06); ruff w wersji z mise.toml. Sprawdza też notebooki (aiops/notebooks).
+# `make lint` i job lint w CI (T06); ruff w wersji z mise.toml. Sprawdza też notebooki (aiops/notebooks)
+# i bloki ```python w plikach .md (README, docs/): od ruff 0.16 `ruff format` domyślnie formatuje je w Markdownie,
+# więc docs-only PR z niesformatowanym blokiem nie przejdzie joba lint.
 line-length = 88
 target-version = "py313"
 
 [tool.ruff.lint]
-# Domyślny zestaw reguł ruff zapisany jawnie: nowa wersja ruff nie zmieni zestawu bez PR.
+# Dawny domyślny zestaw ruff (E4, E7, E9, F), zapisany jawnie. Ruff od 0.16 ma szerszy domyślny zestaw,
+# którego nie włączamy (wymagałby poprawek w istniejącym kodzie). Zestaw zmienia się tylko przez PR.
 select = ["E4", "E7", "E9", "F"]

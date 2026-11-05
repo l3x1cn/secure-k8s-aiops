@@ -1,7 +1,8 @@
 # CI (T06): każdy PR i każdy push na main. Joby lint, unit, secrets i manifests to wymagane
 # kontrole rulesetu gałęzi main: zmiana nazwy joba wymaga zmiany rulesetu.
 # Każdy job uruchamia cel make, który działa też lokalnie. Narzędzia instaluje jdx/mise-action
-# z mise.toml (tylko te, których job potrzebuje); wersja mise = min_version z mise.toml.
+# z mise.toml (tylko te, których job potrzebuje); wersja mise to jedna zmienna CI_MISE_VERSION poniżej (= min_version z mise.toml).
+# Z mise.lock akcja instaluje narzędzia z `--locked` (sumy kontrolne); zmiana wersji w mise.toml wymaga nowego mise.lock w tym samym PR.
 # Akcje przypięte po pełnym SHA commita z komentarzem wersji (lekcja z kompromitacji trivy-action,
 # CVE-2026-33634); repozytorium wymaga takiego przypięcia (sha_pinning_required), podbija je Dependabot.
 name: CI
@@ -14,21 +15,29 @@ on:
 permissions:
   contents: read
 
+env:
+  # = min_version z mise.toml: zmieniaj razem.
+  CI_MISE_VERSION: "2026.10.25"
+
 jobs:
   lint:
     runs-on: ubuntu-24.04
+    # timeout-minutes: bez limitu zawieszona wymagana kontrola blokowałaby PR do 6 h (domyślny limit GitHuba);
+    # 15 min to ok. 3x czas pierwszych przebiegów, popraw po pomiarze w CI.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: "2026.10.13"
+          version: ${{ env.CI_MISE_VERSION }}
           install_args: ruff
       - run: make lint
 
   unit:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     env:
       # Tylko Python z mise.toml: uv nie pobiera własnego interpretera.
       UV_PYTHON_DOWNLOADS: never
@@ -38,32 +47,34 @@ jobs:
           persist-credentials: false
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: "2026.10.13"
+          version: ${{ env.CI_MISE_VERSION }}
           install_args: python uv
       - run: make unit
 
   secrets:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Pełna historia: gitleaks skanuje wszystkie commity osiągalne z HEAD.
+          # Pełna historia: gitleaks skanuje wszystkie commity osiągalne z HEAD (scalające względem pierwszego rodzica).
           fetch-depth: 0
           persist-credentials: false
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: "2026.10.13"
+          version: ${{ env.CI_MISE_VERSION }}
           install_args: gitleaks
       - run: make gitleaks
 
   manifests:
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
-          version: "2026.10.13"
+          version: ${{ env.CI_MISE_VERSION }}
           install_args: kustomize kubeconform
       - run: make manifests
