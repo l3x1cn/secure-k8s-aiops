@@ -99,8 +99,23 @@ if [ "$docker_ok" -eq 1 ]; then
     fail "pamięć dla Dockera: $mem_gib GiB, wymagane co najmniej 8 GB" \
       "macOS: Docker Desktop → Settings → Resources; Windows: memory= w %UserProfile%\\.wslconfig; Linux: maszyna z co najmniej 8 GB RAM"
   fi
+  # make images: Dockerfile'e usług używają BuildKit (RUN --mount), a docker build ma go tylko z Buildx.
+  if buildx_out=$(docker buildx version 2>/dev/null); then
+    ok "Docker Buildx $(printf '%s\n' "$buildx_out" | cut -d ' ' -f 2)"
+  else
+    fail "brak Docker Buildx (potrzebny do make images)" \
+      "Linux: pakiet docker-buildx (Arch, Ubuntu) albo docker-buildx-plugin (repozytorium Dockera); macOS i Windows: aktualny Docker Desktop"
+  fi
 else
   skip "pamięć dla Dockera (brak dostępu do Dockera)"
+  skip "Docker Buildx (brak dostępu do Dockera)"
+fi
+
+echo "== Inne narzędzia =="
+if command -v openssl >/dev/null 2>&1; then
+  ok "$(openssl version | cut -d ' ' -f 1-2) (make secrets)"
+else
+  fail "brak openssl (potrzebny do make secrets)" "zainstaluj openssl menedżerem pakietów systemu"
 fi
 
 echo "== Limity inotify (kind) =="
