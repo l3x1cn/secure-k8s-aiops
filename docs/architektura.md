@@ -6,7 +6,7 @@ Ten dokument to wspólny kontrakt dla zadań T01–T36. Zmiana kontraktu wymaga 
 
 | Komponent | Wersja | Namespace | Zadanie |
 |---|---|---|---|
-| kind, obraz węzła `kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed` | 0.33.0 | — | T03 |
+| kind, obraz węzła `kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed` (`KIND_NODE_IMAGE` w `platform/versions.env`) | 0.33.0 | — | T03, T04 |
 | Cilium + Hubble (relay, UI, metryki) | 1.20.3 | kube-system | T03 |
 | prometheus-operator-crds | przypięta w `platform/versions.env` | — | T03 |
 | kube-prometheus-stack (Prometheus, Alertmanager, Grafana) | przypięta w `versions.env` | monitoring | T16 |
@@ -37,9 +37,11 @@ Obrazy dostawców w przypiętych wersjach (Cilium 1.20.3 z Envoy i Hubble UI, `k
 | monitoring | kube-prometheus-stack, Loki, Alloy, Mailpit | privileged; wyjątek: node-exporter i Alloy potrzebują dostępu do hosta |
 | kube-system | Cilium, Hubble, CoreDNS | bez zmian |
 
+Namespace'y opisuje `deploy/base/namespaces.yaml` (T04); `make up` stosuje go przed sekretami i chartami. Etykieta `pod-security.kubernetes.io/enforce` odpowiada tabeli, a `warn`, `audit` i test dodaje T13.
+
 ## Dostęp z hosta
 
-Klaster kind `secure-k8s-aiops` (kontekst kubectl `kind-secure-k8s-aiops`) tworzy `make cluster` (T03).
+Klaster kind `secure-k8s-aiops` (kontekst kubectl `kind-secure-k8s-aiops`) tworzy `make cluster` (T03). Całą platformę stawia `make up`, a usuwa `make down` (T04); `make urls` wypisuje adresy z tabeli.
 
 Nie ma kontrolera Ingress (Ingress NGINX wycofano w marcu 2026); w demo wystarcza NodePort. Mapowania `extraPortMappings` w kind nasłuchują tylko na `127.0.0.1`.
 
@@ -48,7 +50,9 @@ Nie ma kontrolera Ingress (Ingress NGINX wycofano w marcu 2026); w demo wystarcz
 | http://localhost:8080 | frontend | NodePort 30080 |
 | http://localhost:3000 | Grafana | NodePort 30300 |
 | http://localhost:8025 | Mailpit UI | NodePort 30825 |
-| `make hubble-ui`, `make hubble-relay`, `make prometheus`, `make alertmanager` | Hubble UI, Hubble CLI (relay, localhost:4245), Prometheus, Alertmanager | port-forward |
+| `make hubble-ui`, `make hubble-relay`, `make prometheus`, `make alertmanager` | Hubble UI (localhost:12000), Hubble CLI (relay, localhost:4245), Prometheus (localhost:9090), Alertmanager (localhost:9093) | port-forward |
+
+`make prometheus` i `make alertmanager` łączą się z usługami `prometheus-operated` i `alertmanager-operated` w monitoring, które prometheus-operator (T16) tworzy niezależnie od nazwy release'u.
 
 ## Przepływy sieciowe
 
@@ -120,7 +124,7 @@ Odbiorca: Alertmanager → Mailpit (SMTP `mailpit.monitoring.svc:1025`).
 
 ## Sekrety
 
-Sekrety tworzy `make secrets` (T14) i nigdy nie trafiają do git.
+Sekrety tworzy `make secrets` (`scripts/secrets.sh`, krok `make up`): tylko brakujące, z `openssl rand -hex 32`, bez zapisu wartości na dysk i bez wypisywania; nigdy nie trafiają do git. `orders-api-token` i `fault-token` (ta sama wartość w shop i loadgen) skrypt tworzy od T04, `grafana-admin` dochodzi w T14.
 
 | Secret | Namespace | Klucze | Użycie |
 |---|---|---|---|
@@ -154,7 +158,7 @@ Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FA
 ```
 .
 ├── mise.toml              # wersje narzędzi (T02)
-├── Makefile               # doctor (T02); up, down, images, secrets, test, report (T04 i dalej)
+├── Makefile               # doctor (T02); cluster, hubble-ui, hubble-relay (T03); up, down, namespaces, secrets, images, deploy, status, urls, prometheus, alertmanager (T04); test, report (dalej)
 ├── pyproject.toml         # uv workspace, Python 3.13 (T02)
 ├── platform/              # kind, Cilium, versions.env (T03, T04)
 ├── deploy/
@@ -170,7 +174,7 @@ Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FA
 ├── aiops/                 # pakiet aiops: cechy, model, detektor, ewaluacja (T20–T25, T30)
 ├── chaos/                 # fault-runner i run.py (T08, T21)
 ├── tests/                 # security/, observability/, e2e/ (T11–T14, T26, T27)
-├── scripts/               # doctor.sh (T02), secrets.sh (T14) i skrypty pomocnicze
+├── scripts/               # doctor.sh (T02), secrets.sh (T04, T14) i skrypty pomocnicze
 ├── infra/                 # OpenTofu, rozszerzenie (T33)
 ├── reports/               # wyniki testów i przebiegów, poza git (T26–T31)
 └── docs/                  # karta, architektura, bezpieczeństwo, detekcja, runbook, demo
