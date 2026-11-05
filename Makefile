@@ -18,13 +18,14 @@ doctor:
 
 # Klaster kind z Cilium i Hubble. Idempotentny: istniejącego klastra nie tworzy ponownie,
 # a helm upgrade --install doprowadza CRD i Cilium do wersji i digestów z platform/versions.env.
+# Obraz węzłów: KIND_NODE_IMAGE z platform/versions.env (--image nadpisuje obraz wszystkich węzłów).
 # CRD prometheus-operator (ServiceMonitor) muszą istnieć przed instalacją Cilium.
 # Po Cilium stosuje NetworkPolicy Hubble (platform/cilium/hubble-networkpolicy.yaml): do Relay tylko z Hubble UI.
 cluster:
 	@if kind get clusters | grep -qx '$(CLUSTER_NAME)'; then \
 		echo "Klaster $(CLUSTER_NAME) już istnieje."; \
 	else \
-		kind create cluster --name '$(CLUSTER_NAME)' --config platform/kind/cluster.yaml; \
+		kind create cluster --name '$(CLUSTER_NAME)' --image '$(KIND_NODE_IMAGE)' --config platform/kind/cluster.yaml; \
 	fi
 	helm upgrade --install prometheus-operator-crds $(PROMETHEUS_OPERATOR_CRDS_CHART)@$(PROMETHEUS_OPERATOR_CRDS_CHART_DIGEST) \
 		--version $(PROMETHEUS_OPERATOR_CRDS_VERSION) \
