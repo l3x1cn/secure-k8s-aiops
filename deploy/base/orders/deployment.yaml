@@ -35,6 +35,16 @@ spec:
                 secretKeyRef:
                   name: orders-api-token
                   key: token
+            # /faults/* tylko w overlay local (patch na "true"); poza nim zwykłe 404.
+            - name: FAULTS_ENABLED
+              value: "false"
+            # Secret fault-token istnieje tylko tam, gdzie są awarie (make secrets, local).
+            - name: FAULT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: fault-token
+                  key: token
+                  optional: true
           readinessProbe:
             httpGet:
               path: /healthz

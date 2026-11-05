@@ -40,7 +40,20 @@ docker build -f services/orders/Dockerfile -t ghcr.io/l3x1cn/secure-k8s-aiops/or
 ORDERS_API_TOKEN=dev uv run python -m frontend        # uruchomienie lokalne
 ```
 
-Manifesty są w `deploy/base/{frontend,orders}`; tag obrazu ustawia overlay.
+Manifesty są w `deploy/base/{frontend,orders,fault-runner}`; tag obrazu ustawia overlay.
+
+### Awarie (fault-runner)
+
+`orders` przy `FAULTS_ENABLED=true` i `FAULT_TOKEN` udostępnia `/faults/*` (scenariusze S1–S5 w [docs/architektura.md](docs/architektura.md#scenariusze-awarii)). Klient `fault-runner` działa jako pod w namespace `loadgen`:
+
+```bash
+docker build -f chaos/Dockerfile -t ghcr.io/l3x1cn/secure-k8s-aiops/fault-runner:dev .
+FR="kubectl -n loadgen exec deploy/fault-runner -- fault-runner"
+$FR fault errors --seconds 180 --param ratio=0.5   # S3
+$FR fault memory --param target_ratio=0.9          # S2, domyślnie 180 s
+$FR stop                                           # koniec bieżącej awarii
+$FR spike --users 50 --seconds 180                 # S6: skok ruchu na frontend
+```
 
 ## Jak pracujemy
 
