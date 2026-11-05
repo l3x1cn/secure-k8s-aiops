@@ -6,7 +6,7 @@ Ten dokument to wspólny kontrakt dla zadań T01–T36. Zmiana kontraktu wymaga 
 
 | Komponent | Wersja | Namespace | Zadanie |
 |---|---|---|---|
-| kind, obraz węzła `kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5` | 0.33.0 | — | T03 |
+| kind, obraz węzła `kindest/node:v1.36.4@sha256:099e049362a1526b2db71494e1947aae99bd16290d7c895f2b7ea312e3cbfaed` (`KIND_NODE_IMAGE` w `platform/versions.env`) | 0.33.0 | — | T03, T04 |
 | Cilium + Hubble (relay, UI, metryki) | 1.20.3 | kube-system | T03 |
 | prometheus-operator-crds | przypięta w `platform/versions.env` | — | T03 |
 | kube-prometheus-stack (Prometheus, Alertmanager, Grafana) | przypięta w `versions.env` | monitoring | T16 |
@@ -20,7 +20,11 @@ Ten dokument to wspólny kontrakt dla zadań T01–T36. Zmiana kontraktu wymaga 
 
 Narzędzia CLI w `mise.toml` (T02): Python 3.13.16, kind 0.33.0, kubectl 1.37.1, helm 4.3.1, kustomize 5.8.3, cilium-cli 0.20.1, hubble 1.20.2 (`github:cilium/hubble`), trivy 0.76.0, gitleaks 8.30.1, kubeconform 0.8.0, promtool 3.15.0, uv 0.13.1; opentofu 1.13.1 dla rozszerzenia T33.
 
-Wersje oznaczone „przypięta” wybiera się w dniu realizacji zadania (najnowsza stabilna) i wpisuje do `platform/versions.env`. Trivy nigdy w wersji 0.69.4 (złośliwe wydanie, CVE-2026-33634).
+Wersje oznaczone „przypięta” wybiera się w dniu realizacji zadania (najnowsza stabilna) i wpisuje do `platform/versions.env`. Trivy nigdy w wersji 0.69.4 (złośliwe wydanie, CVE-2026-33634). Charty Helm z rejestrów OCI przypina się wersją i digestem manifestu (`*_CHART_DIGEST` w `platform/versions.env`): `make cluster` instaluje `<chart>@<digest>` z `--version`, a Helm przerywa instalację, gdy tag wersji wskazuje inny digest.
+
+Kubernetes 1.36 zamiast 1.37 to świadomy downgrade o jedną wersję (T03). kind 0.33.0 domyślnie stawia Kubernetes 1.37.0, ale Cilium 1.20 deklaruje testy e2e tylko dla Kubernetes 1.33–1.36 ([wymagania Cilium 1.20](https://docs.cilium.io/en/v1.20/network/kubernetes/requirements/)), więc węzły używają obrazu `kindest/node:v1.36.4`, zbudowanego dla kind 0.33.0. kubectl 1.37.1 z `mise.toml` zostaje, bo odchylenie o jedną wersję jest dozwolone. Na 1.37 przechodzimy, gdy przypięta wersja Cilium obejmie ją testami.
+
+Obrazy dostawców w przypiętych wersjach (Cilium 1.20.3 z Envoy i Hubble UI, `kindest/node:v1.36.4`) mają znane podatności HIGH i CRITICAL bez nowszego wydania upstream (Trivy 0.76.0, 21.10.2026). To zaakceptowane ryzyko szczątkowe (model zagrożeń, T07): klaster kind słucha tylko na `127.0.0.1`, a bramka Trivy w CI (T15) obejmuje obrazy budowane w projekcie. Piny podbijamy, gdy wyjdzie Cilium 1.20.4 albo nowszy obraz `kindest/node` 1.36.
 
 ## Namespace'y i Pod Security
 
@@ -33,7 +37,11 @@ Wersje oznaczone „przypięta” wybiera się w dniu realizacji zadania (najnow
 | monitoring | kube-prometheus-stack, Loki, Alloy, Mailpit | privileged; wyjątek: node-exporter i Alloy potrzebują dostępu do hosta |
 | kube-system | Cilium, Hubble, CoreDNS | bez zmian |
 
+Namespace'y opisuje `deploy/base/namespaces.yaml` (T04); `make up` stosuje go przed sekretami i chartami. Etykieta `pod-security.kubernetes.io/enforce` odpowiada tabeli, a `warn`, `audit` i test dodaje T13.
+
 ## Dostęp z hosta
+
+Klaster kind `secure-k8s-aiops` (kontekst kubectl `kind-secure-k8s-aiops`) tworzy `make cluster` (T03). Całą platformę stawia `make up`, a usuwa `make down` (T04); `make urls` wypisuje adresy z tabeli.
 
 Nie ma kontrolera Ingress (Ingress NGINX wycofano w marcu 2026); w demo wystarcza NodePort. Mapowania `extraPortMappings` w kind nasłuchują tylko na `127.0.0.1`.
 
@@ -42,7 +50,9 @@ Nie ma kontrolera Ingress (Ingress NGINX wycofano w marcu 2026); w demo wystarcz
 | http://localhost:8080 | frontend | NodePort 30080 |
 | http://localhost:3000 | Grafana | NodePort 30300 |
 | http://localhost:8025 | Mailpit UI | NodePort 30825 |
-| `make hubble-ui`, `make prometheus`, `make alertmanager` | Hubble UI, Prometheus, Alertmanager | port-forward |
+| `make hubble-ui`, `make hubble-relay`, `make prometheus`, `make alertmanager` | Hubble UI (localhost:12000), Hubble CLI (relay, localhost:4245), Prometheus (localhost:9090), Alertmanager (localhost:9093) | port-forward |
+
+`make prometheus` i `make alertmanager` łączą się z usługami `prometheus-operated` i `alertmanager-operated` w monitoring, które prometheus-operator (T16) tworzy niezależnie od nazwy release'u.
 
 ## Przepływy sieciowe
 
@@ -67,10 +77,12 @@ Testy (T12) sprawdzają, że te przepływy są odrzucane:
 
 Używamy wyłącznie `networking.k8s.io/v1` NetworkPolicy, żeby te same manifesty działały w chmurze (T29).
 
+W kube-system NetworkPolicy `hubble-relay-ui-ingress` (T03, `platform/cilium/hubble-networkpolicy.yaml`, stosuje ją `make cluster`) dopuszcza do Hubble Relay tylko ruch z Hubble UI na porcie 4245, a do Hubble UI nie dopuszcza ruchu z podów. Dostęp z hosta zostaje przez port-forward (`make hubble-ui`, `make hubble-relay`). Nowy klient Hubble Relay w klastrze wymaga reguły w tej polityce. Agent i operator Cilium działają w sieci hosta, więc NetworkPolicy ich nie obejmuje: metryki na portach 9962, 9963 i 9965 są czytelne z każdego poda (ryzyko szczątkowe, T07).
+
 ## Kontrakt metryk i logów
 
-- **Aplikacje.** `http_requests_total{method,route,status}`, histogram `http_request_duration_seconds` i domyślne metryki procesu z `prometheus_client`. ServiceMonitor nadaje etykiety `namespace` i `service`.
-- **Logi.** Jedna linia JSON na zdarzenie, pola: `ts`, `level` (`DEBUG`, `INFO`, `WARNING`, `ERROR`), `service`, `route`, `status`, `duration_ms`, `msg`.
+- **Aplikacje.** `http_requests_total{method,route,status}`, histogram `http_request_duration_seconds{method,route}` (kubełki z granicą 0.3 s, progiem HighLatency) i domyślne metryki procesu z `prometheus_client`. `route` to szablon trasy (`/orders/{order_id}`), dla nieznanych ścieżek `unmatched`. `method` to `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, a każda inna metoda to `OTHER`. Żądania `/healthz` i `/metrics` nie trafiają do metryk ani logów żądań. ServiceMonitor nadaje etykiety `namespace` i `service`. Implementacja: pakiet `libs/observability` (T05).
+- **Logi.** Jedna linia JSON na zdarzenie na stdout, pola: `ts`, `level` (`DEBUG`, `INFO`, `WARNING`, `ERROR`), `service`, `route`, `status`, `duration_ms`, `msg`. Pola spoza żądania (`route`, `status`, `duration_ms`) mają wartość `null`; wyjątek dodaje pole `exc` ze śladem stosu. Żądania z odpowiedzią 4xx mają `level` = `WARNING`, 5xx = `ERROR`.
 - **Reguły nagrywające (T16).** Etykieta `service` ∈ {frontend, orders}, krok 30 s. To jedyne wejście dla alertów regułowych i cech ML:
 
 | Reguła | Znaczenie |
@@ -112,17 +124,24 @@ Odbiorca: Alertmanager → Mailpit (SMTP `mailpit.monitoring.svc:1025`).
 
 ## Sekrety
 
-Sekrety tworzy `make secrets` (T14) i nigdy nie trafiają do git.
+Sekrety tworzy `make secrets` (`scripts/secrets.sh`, krok `make up`): tylko brakujące, z `openssl rand -hex 32`, bez zapisu wartości na dysk i bez wypisywania; nigdy nie trafiają do git. `orders-api-token` i `fault-token` (ta sama wartość w shop i loadgen) skrypt tworzy od T04, `grafana-admin` dochodzi w T14.
 
 | Secret | Namespace | Klucze | Użycie |
 |---|---|---|---|
-| `orders-api-token` | shop | `token` | frontend → orders (`Authorization: Bearer`) |
-| `fault-token` | shop, loadgen | `token` (ta sama wartość) | fault-runner → orders (`X-Fault-Token`) |
+| `orders-api-token` | shop | `token` | frontend → orders (`Authorization: Bearer`); obie usługi czytają go ze zmiennej `ORDERS_API_TOKEN` |
+| `fault-token` | shop, loadgen | `token` (ta sama wartość) | fault-runner → orders (`X-Fault-Token`); orders czyta go ze zmiennej `FAULT_TOKEN`, fault-runner z pliku `/var/run/secrets/fault-token/token` |
 | `grafana-admin` | monitoring | `admin-user`, `admin-password` | logowanie do Grafany |
 
 ## Scenariusze awarii
 
-Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FAULTS_ENABLED=true` (overlay `local`) i wymagają nagłówka `X-Fault-Token`. `POST /faults/stop` kończy bieżącą awarię.
+Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FAULTS_ENABLED=true` (overlay `local`; w `base` jest `false`, a endpointy zwracają wtedy 404) i wymagają nagłówka `X-Fault-Token` (brak lub zły token: 403). `POST /faults/stop` kończy bieżącą awarię.
+
+- Naraz działa jedna awaria; nowa zastępuje bieżącą. Awaria kończy się sama po `seconds` (domyślne wartości jak w tabeli, zakres 1–3600).
+- Odpowiedź: 202 i `{"fault": "<nazwa>", "ends_at": "<czas UTC>"}`; `stop` zwraca 200 i `{"stopped": "<nazwa>"}` albo `null`.
+- `errors` (`ratio` ∈ (0, 1]) i `latency` (`ms` ∈ [1, 10000]) działają na trasach `/orders`. Odsetek błędów jest deterministyczny: przy `ratio=0.5` co druga odpowiedź to 500.
+- `memory` (`target_ratio` ∈ (0, 0.95]) zajmuje `target_ratio × memory.max − memory.current` z cgroup v2; bez limitu pamięci kontenera zwraca 409.
+- `crash` kończy proces kodem 1 zaraz po wysłaniu odpowiedzi 202; powtórzenia S5 planuje orkiestrator (T21).
+- Klient: `fault-runner fault <nazwa> [--seconds N] [--param k=v]`, `fault-runner stop`, `fault-runner spike --users N --seconds S` w podzie `loadgen/fault-runner` (`kubectl exec`).
 
 | ID | Nazwa | Cel | Mechanizm | Czas | Oczekiwane alerty |
 |---|---|---|---|---|---|
@@ -139,7 +158,7 @@ Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FA
 ```
 .
 ├── mise.toml              # wersje narzędzi (T02)
-├── Makefile               # doctor (T02); up, down, images, secrets, test, report (T04 i dalej)
+├── Makefile               # doctor (T02); cluster, hubble-ui, hubble-relay (T03); up, down, namespaces, secrets, images, deploy, status, urls, prometheus, alertmanager (T04); test, report (dalej)
 ├── pyproject.toml         # uv workspace, Python 3.13 (T02)
 ├── platform/              # kind, Cilium, versions.env (T03, T04)
 ├── deploy/
@@ -147,13 +166,15 @@ Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FA
 │   ├── overlays/local/    # kind (T04)
 │   ├── overlays/cloud/    # zarządzany Kubernetes (T29)
 │   └── observability/     # values chartów, reguły, dashboardy (T16–T19, T22)
-├── services/
+├── libs/
+│   └── observability/     # wspólny kontrakt metryk i logów JSON dla usług (T05)
+├── services/              # obrazy budowane z korzenia: docker build -f services/<nazwa>/Dockerfile .
 │   ├── frontend/          # (T05)
 │   └── orders/            # (T05, T08)
 ├── aiops/                 # pakiet aiops: cechy, model, detektor, ewaluacja (T20–T25, T30)
 ├── chaos/                 # fault-runner i run.py (T08, T21)
 ├── tests/                 # security/, observability/, e2e/ (T11–T14, T26, T27)
-├── scripts/               # doctor.sh (T02), secrets.sh (T14) i skrypty pomocnicze
+├── scripts/               # doctor.sh (T02), secrets.sh (T04, T14) i skrypty pomocnicze
 ├── infra/                 # OpenTofu, rozszerzenie (T33)
 ├── reports/               # wyniki testów i przebiegów, poza git (T26–T31)
 └── docs/                  # karta, architektura, bezpieczeństwo, detekcja, runbook, demo

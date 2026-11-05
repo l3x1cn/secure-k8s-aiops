@@ -1,0 +1,49 @@
+# Overlay local (kind, T04): obrazy :dev z `make images`, frontend na NodePort 30080 (localhost:8080), awarie włączone.
+# Wdraża go `make deploy` (krok `make up`).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+images:
+  - name: ghcr.io/l3x1cn/secure-k8s-aiops/frontend
+    newTag: dev
+  - name: ghcr.io/l3x1cn/secure-k8s-aiops/orders
+    newTag: dev
+  - name: ghcr.io/l3x1cn/secure-k8s-aiops/fault-runner
+    newTag: dev
+patches:
+  # Obrazy :dev są tylko w węzłach kind (`kind load`), nie w rejestrze.
+  - target:
+      kind: Deployment
+    patch: |-
+      - op: add
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: IfNotPresent
+  # localhost:8080 → NodePort 30080 (extraPortMappings w platform/kind/cluster.yaml).
+  - patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: frontend
+        namespace: shop
+      spec:
+        type: NodePort
+        ports:
+          - name: http
+            port: 8080
+            nodePort: 30080
+  # /faults/* dla fault-runnera (docs/architektura.md, „Scenariusze awarii”).
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: orders
+        namespace: shop
+      spec:
+        template:
+          spec:
+            containers:
+              - name: orders
+                env:
+                  - name: FAULTS_ENABLED
+                    value: "true"
