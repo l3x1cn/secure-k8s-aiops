@@ -110,7 +110,7 @@ Wszystkie dane są syntetyczne (generator ruchu i scenariusze awarii). Projekt n
 
 | Obszar | Wybór | Dlaczego |
 |---|---|---|
-| Klaster | kind 0.33 (Kubernetes 1.37), 3 węzły | działa lokalnie i w CI, konfiguracja w jednym pliku |
+| Klaster | kind 0.33 (Kubernetes 1.36), 3 węzły | działa lokalnie i w CI, konfiguracja w jednym pliku; Kubernetes 1.36 zamiast domyślnego w kind 1.37, bo Cilium 1.20 jest testowany na Kubernetes 1.33–1.36 |
 | CNI | Cilium 1.20 + Hubble | egzekwuje NetworkPolicy i raportuje odrzucenia jako metryki (Calico OSS tego nie ma) |
 | Wdrożenie | Makefile, Helm 4, Kustomize, mise | jedna komenda, wersje przypięte w repozytorium |
 | Usługi | Python 3.13, FastAPI | ten sam język co ML |
