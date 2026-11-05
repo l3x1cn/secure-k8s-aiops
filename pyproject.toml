@@ -36,6 +36,17 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
+# Testy jednostkowe bez klastra (`make unit`, job unit w CI). Testy wymagające klastra
+# trafiają do tests/ (T11–T14, T26, T27), który nie należy do testpaths.
 testpaths = ["chaos", "libs", "services"]
 # Usługi mają osobne katalogi tests/ z plikami o tych samych nazwach.
 addopts = ["--import-mode=importlib"]
+
+[tool.ruff]
+# `make lint` i job lint w CI (T06); ruff w wersji z mise.toml. Sprawdza też notebooki (aiops/notebooks).
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+# Domyślny zestaw reguł ruff zapisany jawnie: nowa wersja ruff nie zmieni zestawu bez PR.
+select = ["E4", "E7", "E9", "F"]
