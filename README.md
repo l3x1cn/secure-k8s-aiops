@@ -91,4 +91,5 @@ $FR spike --users 50 --seconds 180                 # S6: skok ruchu na frontend
 
 - Każde zadanie to issue `Txx`. Gałąź `txx-krotki-opis`, PR z `Closes #N`.
 - PR wymaga zielonego CI i jednej recenzji (od T06).
+- Przed PR: `make lint unit gitleaks manifests` (te same kontrole co CI).
 - Wspólne kontrakty (porty, nazwy metryk, alerty, sekrety, scenariusze) zmieniamy tylko PR-em do `docs/architektura.md`.
