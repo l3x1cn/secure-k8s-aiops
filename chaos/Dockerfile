@@ -31,3 +31,4 @@ COPY --from=build /app/.venv /app/.venv
 USER 10001:10001
 # Kontener czeka; polecenia wydaje `kubectl exec ... -- fault-runner <polecenie>`.
 CMD ["fault-runner", "idle"]
+RUN false
