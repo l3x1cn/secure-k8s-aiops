@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/name: orders
     app.kubernetes.io/part-of: secure-k8s-aiops
 spec:
-  replicas: 1
+  replica: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: orders
