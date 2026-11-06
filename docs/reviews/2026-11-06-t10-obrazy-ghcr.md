@@ -14,6 +14,7 @@ Branch `t10-obrazy-ghcr`, range `61921510ecd7a8bcc7e6d36bc6c67fdd6f6e291e..HEAD`
 ## Findings
 
 ### [MEDIUM] COMP-001: The required `images` check is skipped, and so counts as passed, when the Images run is cancelled
+**Status:** 🚫 Rejected (2026-11-06) — dissolved into components
 
 **ID:** COMP-001
 **Location:** `.github/workflows/images.yml:66`
@@ -43,6 +44,8 @@ The job has one `test` step and `timeout-minutes: 5`, so `always()` cannot leave
 ---
 
 ### [MEDIUM] DOC-001: The "four places" checklist for a new image leaves out the overlay `local` image list
+**Status:** ✅ Fixed (2026-11-06)
+**Verification:** advisory — grep, git diff and actionlint ran and passed; the soft check (Read docs/architektura.md:46 contains "w pięciu miejscach") rests on a model re-read of prose
 
 **ID:** DOC-001
 **Location:** `docs/architektura.md:46`
@@ -50,6 +53,10 @@ The job has one `test` step and `timeout-minutes: 5`, so `always()` cannot leave
 **Drift-class:** decision
 **Fix-policy:** needs-decision
 **Effort:** trivial
+**Decision:** A — In docs/architektura.md replace line 46 with "- Nowy obraz (np. anomaly-detector w T24) dopisuje się w pięciu miejscach: matrixy jobów `build` i `push` w `images.yml`, cel `images` w `Makefile`, lista `images:` (`newTag: dev`) w `deploy/overlays/local/kustomization.yaml` i tabela powyżej. Ruleset się nie zmienia.", in .github/workflows/images.yml replace the comment on line 9 with "# Lista obrazów jest w matrixach jobów build i push, w celu images w Makefile i w deploy/overlays/local/kustomization.yaml (images:, newTag: dev): zmieniaj razem.", and in Makefile replace the comment on line 94 with "# Ta sama lista obrazów jest w matrixach jobów build i push w .github/workflows/images.yml i w deploy/overlays/local/kustomization.yaml (images:, newTag: dev): zmieniaj razem."; change no other line in these three files and edit neither deploy/overlays/local/kustomization.yaml nor anything under docs/plans/. [user, 2026-11-06]
+**Verification-plan:** grep -c 'czterech miejscach' docs/architektura.md → 0; grep -n 'deploy/overlays/local/kustomization.yaml' docs/architektura.md .github/workflows/images.yml Makefile → exactly three matched lines, at docs/architektura.md:46, .github/workflows/images.yml:9 and Makefile:94; git diff -U0 HEAD -- Makefile → a single hunk @@ -94 +94 @@ whose one - line and one + line both begin with #; git diff -U0 HEAD -- .github/workflows/images.yml → a single hunk @@ -9 +9 @@; mise exec actionlint@1.7.12 -- actionlint → no output; Read docs/architektura.md:46 → the line contains "w pięciu miejscach" and "lista `images:` (`newTag: dev`) w `deploy/overlays/local/kustomization.yaml`" (soft)
+**Decision-pin:** block=daddcf4b414730fc7c19592f9ab2b39e55cd54be39ae789371fde5d0d39a1bb9 | docs/architektura.md=ce8f9916ade073cbc16bbd761aa50a9ea2dee06c:edit | .github/workflows/images.yml=b8c82199ca684888fd61964aeb9ca65c1f7737de:edit | Makefile=1b9500254975e77c48489f386013d2883bf896e8:edit | deploy/overlays/local/kustomization.yaml=b34060e64ac7ae051760e678ecff1f7f7b70ee76:ref | docs/plans/=unpinnable:ref
+**Dispatch:** attempt 1 dispatched 2026-11-06
 
 **Problem:**
 The line says a new image (e.g. anomaly-detector in T24) is added "w czterech miejscach": the `build` and `push` matrices in `images.yml`, the `images` target in `Makefile` and the table. The image list is also written out per image in the `images:` block of `deploy/overlays/local/kustomization.yaml:7-13` (`newTag: dev`). The same section says the overlay sets the tag (line 31) but the checklist skips it. Nothing checks it: `scripts/manifests.sh` only runs `kustomize build | kubeconform`. The comments `images.yml:9` and `Makefile:94` omit the overlay too. The plan posts the same four-place text to #24.
@@ -63,6 +70,7 @@ Either extend the sentence to every place ("w pięciu miejscach: … lista `imag
 ---
 
 ### [LOW] SEC-001: "Publish only from main" is not enforced at the registry; the unsigned, mutable `sha-<7>` tag is the deploy contract
+**Status:** ✅ Fixed (2026-11-06)
 
 **ID:** SEC-001
 **Location:** `.github/workflows/images.yml:115`
@@ -83,6 +91,7 @@ Proportionate: record it as a residual risk of the supply-chain actor in the T07
 ---
 
 ### [LOW] SEC-002: The required `images` check uses `!cancelled()`, so a cancelled run leaves it skipped
+**Status:** ✅ Fixed (2026-11-06)
 
 **ID:** SEC-002
 **Part-of:** COMP-001
@@ -109,6 +118,7 @@ Add a "cancelled run → `images` fails" case to step 4 of "Po dostarczeniu".
 ---
 
 ### [LOW] MAINT-001: The required check `images` passes when the Images run is cancelled
+**Status:** ✅ Fixed (2026-11-06)
 
 **ID:** MAINT-001
 **Part-of:** COMP-001
@@ -132,6 +142,7 @@ The contract claim that `images` is green only when every image built does not h
 ---
 
 ### [LOW] MAINT-002: The BuildKit image in the build jobs comes from a moving tag
+**Status:** ✅ Fixed (2026-11-06)
 
 **ID:** MAINT-002
 **Location:** `.github/workflows/images.yml:47` and `:99`

@@ -6,7 +6,7 @@
 #   SHA commita>; tagu latest nie ma.
 # Tagi i etykiety OCI (m.in. org.opencontainers.image.source i revision) nadaje docker/metadata-action.
 # context: . zamiast domyślnego kontekstu Git akcji build-push: budowa z drzewa roboczego i .dockerignore, jak lokalnie.
-# Lista obrazów jest w matrixach jobów build i push oraz w celu images w Makefile: zmieniaj razem.
+# Lista obrazów jest w matrixach jobów build i push, w celu images w Makefile i w deploy/overlays/local/kustomization.yaml (images:, newTag: dev): zmieniaj razem.
 # Akcje przypięte po pełnym SHA commita z komentarzem wersji, jak w ci.yml; podbija je Dependabot.
 name: Images
 
@@ -44,7 +44,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Obraz BuildKit przypięty po digeście (domyślnie moby/buildkit:buildx-stable-1, ruchomy tag); Dependabot go nie podbija: zmieniaj ręcznie razem z setup-buildx.
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
@@ -60,10 +63,11 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
 
   # Wymagana kontrola rulesetu main: jeden kontekst niezależny od listy obrazów w matrixie.
+  # always() zamiast !cancelled(): po anulowaniu przebiegu job ma się wykonać i zawieść (pominięta wymagana kontrola liczy się jako zaliczona).
   images:
     name: images
     needs: build
-    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+    if: ${{ always() && github.event_name == 'pull_request' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -96,7 +100,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Obraz BuildKit przypięty po digeście (domyślnie moby/buildkit:buildx-stable-1, ruchomy tag); Dependabot go nie podbija: zmieniaj ręcznie razem z setup-buildx.
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io

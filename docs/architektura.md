@@ -40,10 +40,11 @@ Obrazy budowane w projekcie nazywają się `ghcr.io/l3x1cn/secure-k8s-aiops/<naz
 - CI, workflow Images (`.github/workflows/images.yml`, T10):
   - PR: job `build` buduje każdy obraz bez publikacji tokenem tylko do odczytu. Zbiorczy job `images` jest wymaganą kontrolą rulesetu `main` i jest zielony tylko wtedy, gdy zbudowały się wszystkie obrazy;
   - push na `main`: job `push`, jedyny z `packages: write`, publikuje tag `sha-<7 znaków SHA commita>`. Tagu `latest` nie ma;
-  - komplet obrazów commita istnieje, gdy wszystkie joby `push` jego przebiegu są zielone. Overlay `cloud` (T29) używa tagu takiego commita;
+  - komplet obrazów commita istnieje, gdy wszystkie joby `push` jego przebiegu są zielone. Overlay `cloud` (T29) przypina `sha-<7 znaków>@sha256:<digest>` z przebiegu `main`, więc digest przechodzi review, jak digesty chartów Helm;
   - etykiety OCI nadaje `docker/metadata-action`, m.in. `org.opencontainers.image.source` (adres repozytorium) i `org.opencontainers.image.revision` (pełny SHA commita).
 - Pakiety w GHCR są publiczne, więc obraz pobiera się bez logowania. Pierwsza publikacja nowego obrazu tworzy pakiet prywatny, a API GitHuba nie zmienia widoczności. Właściciel repozytorium przełącza więc pakiet ręcznie w UI (Package settings → Danger Zone → Change visibility → Public). Tej zmiany nie da się cofnąć.
-- Nowy obraz (np. anomaly-detector w T24) dopisuje się w czterech miejscach: matrixy jobów `build` i `push` w `images.yml`, cel `images` w `Makefile` i tabela powyżej. Ruleset się nie zmienia.
+- Ryzyko szczątkowe (model zagrożeń, T07): tag `sha-<7 znaków>` jest mutowalny i niepodpisany, a pakiet połączony z repozytorium dziedziczy jego uprawnienia. Publikację tylko z `main` wymusza więc wyłącznie workflow, nie rejestr: współpracownik z uprawnieniem zapisu albo skradziony PAT może nadpisać tag obrazem z backdoorem bez review. Atestacja provenance (BuildKit) nie jest podpisana i nikt jej nie weryfikuje przy wdrożeniu. Dlatego wdrożenie ma używać digestu, nie samego tagu; podpisaną atestację (`actions/attest-build-provenance` z weryfikacją `gh attestation verify`) rozważymy, gdy deploy z GHCR stanie się realny (T29).
+- Nowy obraz (np. anomaly-detector w T24) dopisuje się w pięciu miejscach: matrixy jobów `build` i `push` w `images.yml`, cel `images` w `Makefile`, lista `images:` (`newTag: dev`) w `deploy/overlays/local/kustomization.yaml` i tabela powyżej. Ruleset się nie zmienia.
 
 ## Namespace'y i Pod Security
 
