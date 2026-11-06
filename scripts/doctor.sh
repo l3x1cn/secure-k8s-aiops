@@ -58,6 +58,7 @@ else
   done <<'EOF'
 python python3
 uv uv
+ruff ruff
 kind kind
 kubectl kubectl
 helm helm

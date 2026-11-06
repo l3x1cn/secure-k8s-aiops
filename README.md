@@ -19,7 +19,7 @@ Lokalny klaster kind z Cilium i Hubble, dwie usługi (frontend, orders), RBAC, N
   - **macOS:** Docker Desktop z co najmniej 8 GB RAM (Settings → Resources).
   - **Windows:** WSL2 z dystrybucją Linuksa (np. Ubuntu) i Docker Desktop z backendem WSL2. Pamięć dla WSL2 ustawia `memory=8GB` (lub więcej) w sekcji `[wsl2]` pliku `%UserProfile%\.wslconfig`. Repozytorium klonuj i wszystkie polecenia uruchamiaj w WSL.
 - Linux i WSL2: limity inotify dla kind: `fs.inotify.max_user_watches` ≥ 524288, `fs.inotify.max_user_instances` ≥ 512. `make doctor` podaje polecenie naprawy.
-- [mise](https://mise.jdx.dev/getting-started.html) 2026.10.13 lub nowsze, git, GNU make, bash, openssl.
+- [mise](https://mise.jdx.dev/getting-started.html) 2026.10.25 lub nowsze, git, GNU make, bash, openssl.
 
 ## Przygotowanie środowiska
 
@@ -91,4 +91,5 @@ $FR spike --users 50 --seconds 180                 # S6: skok ruchu na frontend
 
 - Każde zadanie to issue `Txx`. Gałąź `txx-krotki-opis`, PR z `Closes #N`.
 - PR wymaga zielonego CI i jednej recenzji (od T06).
+- Przed PR: `make lint unit gitleaks manifests` (te same kontrole co CI).
 - Wspólne kontrakty (porty, nazwy metryk, alerty, sekrety, scenariusze) zmieniamy tylko PR-em do `docs/architektura.md`.
