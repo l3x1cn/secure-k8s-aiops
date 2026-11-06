@@ -10,6 +10,7 @@ KUBE_CONTEXT := kind-$(CLUSTER_NAME)
 CILIUM_CHART := oci://quay.io/cilium/charts/cilium
 PROMETHEUS_OPERATOR_CRDS_CHART := oci://ghcr.io/prometheus-community/charts/prometheus-operator-crds
 # Obrazy budowane w projekcie (w deploy/base bez tagu; overlay local ustawia :dev).
+# CI (.github/workflows/images.yml, T10) publikuje je w GHCR z tagiem sha-<7 znaków SHA commita>; IMAGE_REPO jest też w env tego workflow: zmieniaj razem.
 IMAGE_REPO := ghcr.io/l3x1cn/secure-k8s-aiops
 # Namespace'y z Deploymentami aplikacji (etykieta app.kubernetes.io/part-of=secure-k8s-aiops), na które czeka deploy.
 APP_NAMESPACES := shop loadgen aiops intruder
@@ -90,6 +91,7 @@ secrets: namespaces
 
 # Obrazy :dev budowane z korzenia repozytorium (workspace uv) i ładowane do węzłów kind.
 # --provenance=false: atestacja BuildKit w magazynie obrazów containerd psuje kind load (kubernetes-sigs/kind#3795).
+# Ta sama lista obrazów jest w matrixach jobów build i push w .github/workflows/images.yml: zmieniaj razem.
 images:
 	docker build --provenance=false -f services/frontend/Dockerfile -t $(IMAGE_REPO)/frontend:dev .
 	docker build --provenance=false -f services/orders/Dockerfile -t $(IMAGE_REPO)/orders:dev .

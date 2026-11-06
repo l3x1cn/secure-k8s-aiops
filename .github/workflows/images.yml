@@ -1,0 +1,117 @@
+# Obrazy (T10): Docker Buildx buduje obrazy projektu z korzenia repozytorium (workspace uv), jak `make images`.
+# - PR: job build buduje każdy obraz bez publikacji (token tylko do odczytu). Job images to jedna wymagana
+#   kontrola rulesetu main, zielona tylko wtedy, gdy zbudowały się wszystkie obrazy; zmiana nazwy joba images
+#   wymaga zmiany rulesetu.
+# - Push na main: job push, jedyny z packages: write, publikuje ghcr.io/l3x1cn/secure-k8s-aiops/<nazwa>:sha-<7 znaków
+#   SHA commita>; tagu latest nie ma.
+# Tagi i etykiety OCI (m.in. org.opencontainers.image.source i revision) nadaje docker/metadata-action.
+# context: . zamiast domyślnego kontekstu Git akcji build-push: budowa z drzewa roboczego i .dockerignore, jak lokalnie.
+# Lista obrazów jest w matrixach jobów build i push oraz w celu images w Makefile: zmieniaj razem.
+# Akcje przypięte po pełnym SHA commita z komentarzem wersji, jak w ci.yml; podbija je Dependabot.
+name: Images
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  # = IMAGE_REPO z Makefile: zmieniaj razem.
+  IMAGE_REPO: ghcr.io/l3x1cn/secure-k8s-aiops
+
+jobs:
+  build:
+    name: build (${{ matrix.image }})
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    # Jak w ci.yml: zapas na zawieszenie, popraw po pomiarze czasu budowy w CI.
+    timeout-minutes: 15
+    strategy:
+      # Każdy obraz ma własny wynik: błąd jednego nie anuluje budowy pozostałych.
+      fail-fast: false
+      matrix:
+        include:
+          - image: frontend
+            dockerfile: services/frontend/Dockerfile
+          - image: orders
+            dockerfile: services/orders/Dockerfile
+          - image: fault-runner
+            dockerfile: chaos/Dockerfile
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE_REPO }}/${{ matrix.image }}
+          tags: type=sha
+          flavor: latest=false
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: false
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  # Wymagana kontrola rulesetu main: jeden kontekst niezależny od listy obrazów w matrixie.
+  images:
+    name: images
+    needs: build
+    if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Wszystkie obrazy zbudowane
+        env:
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          echo "Wynik joba build: $BUILD_RESULT"
+          test "$BUILD_RESULT" = success
+
+  push:
+    name: push (${{ matrix.image }})
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write # publikacja obrazów w GHCR
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: frontend
+            dockerfile: services/frontend/Dockerfile
+          - image: orders
+            dockerfile: services/orders/Dockerfile
+          - image: fault-runner
+            dockerfile: chaos/Dockerfile
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE_REPO }}/${{ matrix.image }}
+          tags: type=sha
+          flavor: latest=false
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
