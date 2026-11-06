@@ -26,6 +26,25 @@ Kubernetes 1.36 zamiast 1.37 to świadomy downgrade o jedną wersję (T03). kind
 
 Obrazy dostawców w przypiętych wersjach (Cilium 1.20.3 z Envoy i Hubble UI, `kindest/node:v1.36.4`) mają znane podatności HIGH i CRITICAL bez nowszego wydania upstream (Trivy 0.76.0, 21.10.2026). To zaakceptowane ryzyko szczątkowe (model zagrożeń, T07): klaster kind słucha tylko na `127.0.0.1`, a bramka Trivy w CI (T15) obejmuje obrazy budowane w projekcie. Piny podbijamy, gdy wyjdzie Cilium 1.20.4 albo nowszy obraz `kindest/node` 1.36.
 
+## Obrazy
+
+Obrazy budowane w projekcie nazywają się `ghcr.io/l3x1cn/secure-k8s-aiops/<nazwa>` (`IMAGE_REPO` w `Makefile`) i powstają z korzenia repozytorium (workspace uv): `docker build -f <Dockerfile> .`. Manifesty w `deploy/base` podają obraz bez tagu, a tag ustawia overlay.
+
+| Obraz | Dockerfile | Zadanie |
+|---|---|---|
+| frontend | `services/frontend/Dockerfile` | T05 |
+| orders | `services/orders/Dockerfile` | T05, T08 |
+| fault-runner | `chaos/Dockerfile` | T08 |
+
+- Lokalnie `make images` buduje tag `:dev` i ładuje go do węzłów kind (overlay `local`).
+- CI, workflow Images (`.github/workflows/images.yml`, T10):
+  - PR: job `build` buduje każdy obraz bez publikacji tokenem tylko do odczytu. Zbiorczy job `images` jest wymaganą kontrolą rulesetu `main` i jest zielony tylko wtedy, gdy zbudowały się wszystkie obrazy;
+  - push na `main`: job `push`, jedyny z `packages: write`, publikuje tag `sha-<7 znaków SHA commita>`. Tagu `latest` nie ma;
+  - komplet obrazów commita istnieje, gdy wszystkie joby `push` jego przebiegu są zielone. Overlay `cloud` (T29) używa tagu takiego commita;
+  - etykiety OCI nadaje `docker/metadata-action`, m.in. `org.opencontainers.image.source` (adres repozytorium) i `org.opencontainers.image.revision` (pełny SHA commita).
+- Pakiety w GHCR są publiczne, więc obraz pobiera się bez logowania. Pierwsza publikacja nowego obrazu tworzy pakiet prywatny, a API GitHuba nie zmienia widoczności. Właściciel repozytorium przełącza więc pakiet ręcznie w UI (Package settings → Danger Zone → Change visibility → Public). Tej zmiany nie da się cofnąć.
+- Nowy obraz (np. anomaly-detector w T24) dopisuje się w czterech miejscach: matrixy jobów `build` i `push` w `images.yml`, cel `images` w `Makefile` i tabela powyżej. Ruleset się nie zmienia.
+
 ## Namespace'y i Pod Security
 
 | Namespace | Zawartość | PSA `enforce` |
@@ -157,6 +176,7 @@ Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FA
 
 ```
 .
+├── .github/               # workflows/ci.yml: kontrole PR (T06); workflows/images.yml: obrazy i GHCR (T10); dependabot.yml (T06)
 ├── mise.toml              # wersje narzędzi (T02)
 ├── Makefile               # doctor (T02); cluster, hubble-ui, hubble-relay (T03); up, down, namespaces, secrets, images, deploy, status, urls, prometheus, alertmanager (T04); lint, unit, gitleaks, manifests (T06); test, report (dalej)
 ├── pyproject.toml         # uv workspace, Python 3.13 (T02)
