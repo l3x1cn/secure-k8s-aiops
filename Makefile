@@ -98,7 +98,7 @@ images:
 	docker build --provenance=false -f chaos/Dockerfile -t $(IMAGE_REPO)/fault-runner:dev .
 	kind load docker-image --name '$(CLUSTER_NAME)' $(IMAGE_REPO)/frontend:dev $(IMAGE_REPO)/orders:dev $(IMAGE_REPO)/fault-runner:dev
 
-# Overlay local (namespace'y i aplikacje) przez kustomize z mise.toml, jak walidacja manifestów w CI (T06),
+# Overlay local (namespace'y, RBAC i aplikacje) przez kustomize z mise.toml, jak walidacja manifestów w CI (T06),
 # potem rollout Deploymentów aplikacji. Błąd kustomize daje pusty strumień, na którym kubectl apply też kończy się błędem.
 deploy:
 	kustomize build deploy/overlays/local | kubectl --context $(KUBE_CONTEXT) apply -f -

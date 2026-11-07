@@ -132,6 +132,10 @@ def can_i(who: str, verb: str, resource: str, namespace: str | None) -> bool:
         args.append(f"--subresource={subresource}")
     args += ["-n", namespace] if namespace else ["-A"]
     result = kubectl(*args, *identity(who), check=False)
+    # Nieznany zasób to `no` na stdout i ostrzeżenie tylko na stderr, więc
+    # wiersz „deny” z literówką przeszedłby bez sprawdzania czegokolwiek.
+    if "doesn't have a resource type" in result.stderr:
+        pytest.fail(f"kubectl {' '.join(args)}: {result.stderr.strip()}")
     answer = result.stdout.strip()
     if answer.startswith("yes"):
         return True
@@ -162,9 +166,32 @@ def test_sre_reads_every_listable_resource_except_secrets():
     resources = kubectl("api-resources", "--verbs=list", "-o", "name").stdout.split()
     assert {"pods", "secrets", "deployments.apps"} <= set(resources)
     missing = [
-        r for r in resources if r != "secrets" and not can_i("sre", "list", r, None)
+        f"{verb} {r}"
+        for r in resources
+        if r != "secrets"
+        for verb in ("get", "list", "watch")
+        if not can_i("sre", verb, r, None)
     ]
     assert not missing, f"dopisz do deploy/base/rbac/sre-readonly.yaml: {missing}"
+
+
+def test_team_roles_are_read_only():
+    # Wykluczenia dowodzimy z reguł ról, nie z próbek `can-i`: żaden dopisany
+    # podzasób (attach, portforward, proxy, token) ani czasownik nie przejdzie.
+    roles = [get_json("clusterrole", "sre-readonly")] + [
+        get_json("role", "developer", "-n", ns) for ns in DEVELOPER_NAMESPACES
+    ]
+    for role in roles:
+        name = role["metadata"]["name"]
+        assert "aggregationRule" not in role, name
+        for rule in role["rules"]:
+            resources = rule.get("resources", [])
+            assert set(rule["verbs"]) == {"get", "list", "watch"}, (name, rule)
+            assert "*" not in rule["apiGroups"] + resources, (name, rule)
+            assert "secrets" not in resources, (name, rule)
+            assert {r for r in resources if "/" in r} <= {"pods/log"}, (name, rule)
+            assert not rule.get("nonResourceURLs"), (name, rule)
+            assert not rule.get("resourceNames"), (name, rule)
 
 
 @pytest.mark.parametrize(("namespace", "name"), SERVICE_ACCOUNTS)
@@ -176,13 +203,16 @@ def test_service_account_does_not_automount_token(namespace, name):
 def test_service_accounts_have_no_rbac_bindings():
     accounts = set(SERVICE_ACCOUNTS)
     namespace_groups = {f"system:serviceaccounts:{ns}" for ns, _ in SERVICE_ACCOUNTS}
+    sa_users = {f"system:serviceaccount:{ns}:{name}" for ns, name in SERVICE_ACCOUNTS}
     found = []
     for binding in get_json("rolebindings,clusterrolebindings", "-A")["items"]:
         meta = binding["metadata"]
         for subject in binding.get("subjects") or []:
             account = (subject.get("namespace", meta.get("namespace")), subject["name"])
-            if (subject["kind"] == "ServiceAccount" and account in accounts) or (
-                subject["kind"] == "Group" and subject["name"] in namespace_groups
+            if (
+                (subject["kind"] == "ServiceAccount" and account in accounts)
+                or (subject["kind"] == "User" and subject["name"] in sa_users)
+                or (subject["kind"] == "Group" and subject["name"] in namespace_groups)
             ):
                 where = f"{meta.get('namespace', '')}/{meta['name']}"
                 found.append(f"{binding['kind']} {where}")

@@ -61,7 +61,7 @@ Namespace'y opisuje `deploy/base/namespaces.yaml` (T04); `make up` stosuje go pr
 
 ## RBAC
 
-Żaden pod nie rozmawia z API klastra, a członkowie zespołu dostają tylko odczyt (T11). Manifesty są w `deploy/base/rbac/`; `make deploy` stosuje je razem z aplikacjami.
+Żaden własny pod (workloady z tabeli poniżej) nie rozmawia z API klastra, a członkowie zespołu dostają tylko odczyt (T11). Zakaz nie obejmuje komponentów platformy z kube-system (Cilium, Hubble, CoreDNS) ani chartów z T16 i T17: mają własne konta i RBAC. Klaster nie odrzuca poda z tokenem API, więc złamanie zakazu wykrywa dopiero `tests/security/test_rbac.py` na działającym klastrze. Manifesty są w `deploy/base/rbac/`; `make deploy` stosuje je razem z aplikacjami.
 
 Każdy własny workload działa na własnym ServiceAccount o swojej nazwie, z `automountServiceAccountToken: false` i bez Role ani bindingów. Deployment podaje `serviceAccountName: <nazwa>` i powtarza `automountServiceAccountToken: false` w specyfikacji poda, bo ustawienie poda ma pierwszeństwo przed ustawieniem konta. W żadnym własnym podzie nie ma więc katalogu `/var/run/secrets/kubernetes.io/serviceaccount`.
 
