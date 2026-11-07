@@ -1,0 +1,155 @@
+# Grupa team:sre (T11): ClusterRole sre-readonly, odczyt (get, list, watch) wszystkich zasobów klastra poza secrets.
+# RBAC nie ma reguł odmowy, więc zasoby są wyliczone, po jednej regule na grupę API:
+# - zasoby GA Kubernetes 1.36 (bez wersji alpha i beta, wyłączonych domyślnie) oraz wszystkie CRD
+#   z Cilium 1.20.3 (cilium.io) i prometheus-operator-crds 32.0.1 (monitoring.coreos.com);
+# - bez "*" w resources: Trivy KSV-0046 (CRITICAL) odrzuca ClusterRole z "*" i get/list,
+#   a trivy config --severity HIGH,CRITICAL blokuje deploy/ (T13, T15);
+# - z podzasobów core tylko pods/log. Bez pods/exec, pods/attach, pods/portforward oraz proxy podów,
+#   usług i węzłów: get na nodes/proxy pozwala wykonać polecenie w dowolnym podzie przez API kubeletu.
+# Nowy zasób albo grupa API (np. CRD z chartu w T16–T19) wymaga dopisania tutaj; brak zgłasza
+# test_sre_reads_every_listable_resource_except_secrets w tests/security/test_rbac.py.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: sre-readonly
+  labels:
+    app.kubernetes.io/part-of: secure-k8s-aiops
+rules:
+  - apiGroups: [""]
+    resources:
+      - componentstatuses
+      - configmaps
+      - endpoints
+      - events
+      - limitranges
+      - namespaces
+      - nodes
+      - persistentvolumeclaims
+      - persistentvolumes
+      - pods
+      - pods/log
+      - podtemplates
+      - replicationcontrollers
+      - resourcequotas
+      - serviceaccounts
+      - services
+    verbs: [get, list, watch]
+  - apiGroups: [admissionregistration.k8s.io]
+    resources:
+      - mutatingadmissionpolicies
+      - mutatingadmissionpolicybindings
+      - mutatingwebhookconfigurations
+      - validatingadmissionpolicies
+      - validatingadmissionpolicybindings
+      - validatingwebhookconfigurations
+    verbs: [get, list, watch]
+  - apiGroups: [apiextensions.k8s.io]
+    resources: [customresourcedefinitions]
+    verbs: [get, list, watch]
+  - apiGroups: [apiregistration.k8s.io]
+    resources: [apiservices]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [controllerrevisions, daemonsets, deployments, replicasets, statefulsets]
+    verbs: [get, list, watch]
+  - apiGroups: [autoscaling]
+    resources: [horizontalpodautoscalers]
+    verbs: [get, list, watch]
+  - apiGroups: [batch]
+    resources: [cronjobs, jobs]
+    verbs: [get, list, watch]
+  - apiGroups: [certificates.k8s.io]
+    resources: [certificatesigningrequests]
+    verbs: [get, list, watch]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [get, list, watch]
+  - apiGroups: [discovery.k8s.io]
+    resources: [endpointslices]
+    verbs: [get, list, watch]
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [get, list, watch]
+  - apiGroups: [flowcontrol.apiserver.k8s.io]
+    resources: [flowschemas, prioritylevelconfigurations]
+    verbs: [get, list, watch]
+  - apiGroups: [networking.k8s.io]
+    resources: [ingressclasses, ingresses, ipaddresses, networkpolicies, servicecidrs]
+    verbs: [get, list, watch]
+  - apiGroups: [node.k8s.io]
+    resources: [runtimeclasses]
+    verbs: [get, list, watch]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [get, list, watch]
+  - apiGroups: [rbac.authorization.k8s.io]
+    resources: [clusterrolebindings, clusterroles, rolebindings, roles]
+    verbs: [get, list, watch]
+  - apiGroups: [resource.k8s.io]
+    resources: [deviceclasses, resourceclaims, resourceclaimtemplates, resourceslices]
+    verbs: [get, list, watch]
+  - apiGroups: [scheduling.k8s.io]
+    resources: [priorityclasses]
+    verbs: [get, list, watch]
+  - apiGroups: [storage.k8s.io]
+    resources:
+      - csidrivers
+      - csinodes
+      - csistoragecapacities
+      - storageclasses
+      - volumeattachments
+      - volumeattributesclasses
+    verbs: [get, list, watch]
+  - apiGroups: [cilium.io]
+    resources:
+      - ciliumbgpadvertisements
+      - ciliumbgpclusterconfigs
+      - ciliumbgpnodeconfigoverrides
+      - ciliumbgpnodeconfigs
+      - ciliumbgppeerconfigs
+      - ciliumcidrgroups
+      - ciliumclusterwideenvoyconfigs
+      - ciliumclusterwidenetworkpolicies
+      - ciliumdatapathplugins
+      - ciliumegressgatewaypolicies
+      - ciliumendpoints
+      - ciliumendpointslices
+      - ciliumenvoyconfigs
+      - ciliumgatewayclassconfigs
+      - ciliumidentities
+      - ciliuml2announcementpolicies
+      - ciliumloadbalancerippools
+      - ciliumlocalredirectpolicies
+      - ciliumnetworkpolicies
+      - ciliumnodeconfigs
+      - ciliumnodes
+      - ciliumpodippools
+    verbs: [get, list, watch]
+  - apiGroups: [monitoring.coreos.com]
+    resources:
+      - alertmanagerconfigs
+      - alertmanagers
+      - podmonitors
+      - probes
+      - prometheusagents
+      - prometheuses
+      - prometheusrules
+      - scrapeconfigs
+      - servicemonitors
+      - thanosrulers
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: sre-readonly
+  labels:
+    app.kubernetes.io/part-of: secure-k8s-aiops
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: team:sre
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: sre-readonly

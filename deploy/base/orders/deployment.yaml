@@ -16,6 +16,10 @@ spec:
         app.kubernetes.io/name: orders
         app.kubernetes.io/part-of: secure-k8s-aiops
     spec:
+      # Własne konto bez uprawnień RBAC (T11, deploy/base/rbac); usługa nie rozmawia z API Kubernetesa,
+      # więc pod nie dostaje tokenu (ustawienie w podzie ma pierwszeństwo przed ustawieniem konta).
+      serviceAccountName: orders
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001

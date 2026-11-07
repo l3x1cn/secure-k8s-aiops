@@ -18,7 +18,9 @@ spec:
         # Selektor NetworkPolicy (T12): tylko ten pod może wołać /faults/* w orders.
         role: fault-runner
     spec:
-      # Kontener tylko czeka na `kubectl exec`; nie potrzebuje API Kubernetesa.
+      # Własne konto bez uprawnień RBAC (T11, deploy/base/rbac). Kontener tylko czeka na `kubectl exec`
+      # i nie potrzebuje API Kubernetesa, więc pod nie dostaje tokenu.
+      serviceAccountName: fault-runner
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true

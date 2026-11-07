@@ -1,0 +1,105 @@
+# Grupa team:developers (T11): Role developer w shop, loadgen i aiops, tylko odczyt
+# (get, list, watch) podów z logami, usług, Deploymentów, ConfigMap i zdarzeń.
+# Bez secrets, bez pods/exec i bez zapisu. Zdarzenia z obu grup API: core (kubectl get events) i events.k8s.io.
+# Trzy kopie Role i RoleBinding różnią się tylko namespace'em: zmieniaj razem.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: developer
+  namespace: shop
+  labels:
+    app.kubernetes.io/part-of: secure-k8s-aiops
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/log, services, configmaps, events]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, watch]
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developer
+  namespace: shop
+  labels:
+    app.kubernetes.io/part-of: secure-k8s-aiops
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: team:developers
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: developer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: developer
+  namespace: loadgen
+  labels:
+    app.kubernetes.io/part-of: secure-k8s-aiops
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/log, services, configmaps, events]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, watch]
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developer
+  namespace: loadgen
+  labels:
+    app.kubernetes.io/part-of: secure-k8s-aiops
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: team:developers
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: developer
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: developer
+  namespace: aiops
+  labels:
+    app.kubernetes.io/part-of: secure-k8s-aiops
+rules:
+  - apiGroups: [""]
+    resources: [pods, pods/log, services, configmaps, events]
+    verbs: [get, list, watch]
+  - apiGroups: [apps]
+    resources: [deployments]
+    verbs: [get, list, watch]
+  - apiGroups: [events.k8s.io]
+    resources: [events]
+    verbs: [get, list, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: developer
+  namespace: aiops
+  labels:
+    app.kubernetes.io/part-of: secure-k8s-aiops
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: Group
+    name: team:developers
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: developer

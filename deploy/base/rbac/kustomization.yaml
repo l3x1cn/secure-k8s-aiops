@@ -1,0 +1,9 @@
+# RBAC (T11, docs/architektura.md „RBAC”): konta usług bez tokenu API i role zespołu.
+# Bez pola namespace: konta i Role leżą w kilku namespace'ach, więc każdy obiekt podaje swój jawnie,
+# a ClusterRole i ClusterRoleBinding nie mają namespace'u.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - serviceaccounts.yaml
+  - developer.yaml
+  - sre-readonly.yaml
