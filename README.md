@@ -8,6 +8,7 @@ Lokalny klaster kind z Cilium i Hubble, dwie usługi (frontend, orders), RBAC, N
 
 - Karta projektu: [docs/karta-projektu.md](docs/karta-projektu.md)
 - Architektura i kontrakty: [docs/architektura.md](docs/architektura.md)
+- Model zagrożeń i macierz kontroli: [docs/bezpieczenstwo.md](docs/bezpieczenstwo.md)
 - Detekcja anomalii (metoda, próg, wyniki prototypu): [docs/detekcja.md](docs/detekcja.md)
 - Zadania: [Issues](https://github.com/l3x1cn/secure-k8s-aiops/issues), sprinty: [Milestones](https://github.com/l3x1cn/secure-k8s-aiops/milestones)
 - Tablica: [GitHub Project](https://github.com/users/l3x1cn/projects/1)
