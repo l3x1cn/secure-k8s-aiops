@@ -59,6 +59,34 @@ Obrazy budowane w projekcie nazywają się `ghcr.io/l3x1cn/secure-k8s-aiops/<naz
 
 Namespace'y opisuje `deploy/base/namespaces.yaml` (T04); `make up` stosuje go przed sekretami i chartami. Etykieta `pod-security.kubernetes.io/enforce` odpowiada tabeli, a `warn`, `audit` i test dodaje T13.
 
+## RBAC
+
+Żaden własny pod (workloady z tabeli poniżej) nie rozmawia z API klastra, a członkowie zespołu dostają tylko odczyt (T11). Zakaz nie obejmuje komponentów platformy z kube-system (Cilium, Hubble, CoreDNS) ani chartów z T16 i T17: mają własne konta i RBAC. Klaster nie odrzuca poda z tokenem API, więc złamanie zakazu wykrywa dopiero `tests/security/test_rbac.py` na działającym klastrze. Manifesty są w `deploy/base/rbac/`; `make deploy` stosuje je razem z aplikacjami.
+
+Każdy własny workload działa na własnym ServiceAccount o swojej nazwie, z `automountServiceAccountToken: false` i bez Role ani bindingów. Deployment podaje `serviceAccountName: <nazwa>` i powtarza `automountServiceAccountToken: false` w specyfikacji poda, bo ustawienie poda ma pierwszeństwo przed ustawieniem konta. W żadnym własnym podzie nie ma więc katalogu `/var/run/secrets/kubernetes.io/serviceaccount`.
+
+| ServiceAccount | Namespace | Workload z zadania |
+|---|---|---|
+| frontend | shop | T05 |
+| orders | shop | T05 |
+| locust | loadgen | T18 |
+| fault-runner | loadgen | T08 |
+| anomaly-detector | aiops | T24 |
+| intruder | intruder | T12 |
+
+Nowy workload dopisuje konto w trzech miejscach: `deploy/base/rbac/serviceaccounts.yaml`, `SERVICE_ACCOUNTS` w `tests/security/test_rbac.py` i tabela powyżej.
+
+Ludzie dostają uprawnienia przez grupy. W kind nie ma kont osób, więc test sprawdza grupy impersonacją (`kubectl --as=<użytkownik> --as-group=<grupa>`).
+
+| Grupa | Rola | Zakres | Uprawnienia |
+|---|---|---|---|
+| `team:developers` | Role `developer` (kopia w każdym namespace) | shop, loadgen, aiops | get, list, watch na pods, pods/log, services, deployments, configmaps i events (core i `events.k8s.io`); bez secrets, pods/exec i zapisu |
+| `team:sre` | ClusterRole `sre-readonly` | cały klaster | get, list, watch na wszystkich zasobach poza secrets; z podzasobów tylko pods/log, bez exec, attach, port-forward i proxy |
+
+RBAC nie ma reguł odmowy, więc `sre-readonly` wylicza zasoby po grupach API: zasoby GA Kubernetes 1.36 oraz CRD z Cilium (`cilium.io`) i prometheus-operator (`monitoring.coreos.com`). Bez `resources: ["*"]`: Trivy (KSV-0046, CRITICAL) odrzuca taką ClusterRole, a `trivy config` blokuje `deploy/` (T13, T15). Bez `nodes/proxy`: `get` na nim pozwala wykonać polecenie w dowolnym podzie przez API kubeletu. Zadanie, które dodaje zasób z nowej grupy API albo nowe CRD (np. chart w T16–T19), dopisuje go do `deploy/base/rbac/sre-readonly.yaml`; brakujące zasoby wypisuje test `test_sre_reads_every_listable_resource_except_secrets`.
+
+Test: `tests/security/test_rbac.py` (marker `security`); na działającym klastrze `uv run --locked pytest tests/security/test_rbac.py`.
+
 ## Dostęp z hosta
 
 Klaster kind `secure-k8s-aiops` (kontekst kubectl `kind-secure-k8s-aiops`) tworzy `make cluster` (T03). Całą platformę stawia `make up`, a usuwa `make down` (T04); `make urls` wypisuje adresy z tabeli.
