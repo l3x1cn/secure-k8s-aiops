@@ -16,11 +16,11 @@ Ten dokument to wspólny kontrakt dla zadań T01–T36. Zmiana kontraktu wymaga 
 | frontend, orders (Python 3.13, FastAPI) | — | shop | T05 |
 | locust, fault-runner | — | loadgen | T18, T08 |
 | anomaly-detector (scikit-learn) | — | aiops | T24 |
-| intruder (`curlimages/curl`) | przypięta po digest | intruder | T12 |
+| intruder (`docker.io/curlimages/curl`) | 8.23.0, przypięta po digest w `deploy/base/intruder/deployment.yaml` | intruder | T12 |
 
 Narzędzia CLI w `mise.toml` (T02): Python 3.13.16, kind 0.33.0, kubectl 1.37.1, helm 4.3.1, kustomize 5.8.3, cilium-cli 0.20.1, hubble 1.20.2 (`github:cilium/hubble`), trivy 0.76.0, gitleaks 8.30.1, kubeconform 0.8.0, promtool 3.15.0, uv 0.13.7, ruff 0.17.3 (T06); opentofu 1.13.1 dla rozszerzenia T33.
 
-Wersje oznaczone „przypięta” wybiera się w dniu realizacji zadania (najnowsza stabilna) i wpisuje do `platform/versions.env`. Trivy nigdy w wersji 0.69.4 (złośliwe wydanie, CVE-2026-33634). Charty Helm z rejestrów OCI przypina się wersją i digestem manifestu (`*_CHART_DIGEST` w `platform/versions.env`): `make cluster` instaluje `<chart>@<digest>` z `--version`, a Helm przerywa instalację, gdy tag wersji wskazuje inny digest.
+Wersje oznaczone „przypięta” wybiera się w dniu realizacji zadania (najnowsza stabilna) i wpisuje do `platform/versions.env`, gdy czyta je Makefile; obraz zewnętrzny używany tylko w manifeście z `deploy/` (intruder) przypina się tagiem i digestem w tym manifeście. Trivy nigdy w wersji 0.69.4 (złośliwe wydanie, CVE-2026-33634). Charty Helm z rejestrów OCI przypina się wersją i digestem manifestu (`*_CHART_DIGEST` w `platform/versions.env`): `make cluster` instaluje `<chart>@<digest>` z `--version`, a Helm przerywa instalację, gdy tag wersji wskazuje inny digest.
 
 Kubernetes 1.36 zamiast 1.37 to świadomy downgrade o jedną wersję (T03). kind 0.33.0 domyślnie stawia Kubernetes 1.37.0, ale Cilium 1.20 deklaruje testy e2e tylko dla Kubernetes 1.33–1.36 ([wymagania Cilium 1.20](https://docs.cilium.io/en/v1.20/network/kubernetes/requirements/)), więc węzły używają obrazu `kindest/node:v1.36.4`, zbudowanego dla kind 0.33.0. kubectl 1.37.1 z `mise.toml` zostaje, bo odchylenie o jedną wersję jest dozwolone. Na 1.37 przechodzimy, gdy przypięta wersja Cilium obejmie ją testami.
 
@@ -116,12 +116,33 @@ Wszystkie kontenery aplikacyjne słuchają na porcie 8080 (HTTP, `/metrics`, `/h
 | aiops/anomaly-detector | monitoring/Prometheus :9090, monitoring/Loki :3100 | — | cechy i kontekst zdarzeń |
 | każdy pod w shop, loadgen, aiops | kube-system/kube-dns | 53 UDP/TCP | DNS |
 
-Testy (T12) sprawdzają, że te przepływy są odrzucane:
-- intruder → orders
-- orders → frontend
-- orders → internet
-- frontend → internet
-- fault-runner → internet
+Manifesty są w `deploy/base/networkpolicies/` (T12); każdy obiekt podaje swój namespace:
+- `default-deny.yaml`: polityka `default-deny` w shop, loadgen i aiops (wszystkie pody, Ingress i Egress, bez reguł);
+- `dns.yaml`: polityka `allow-dns` w tych samych namespace'ach (wszystkie pody → kube-dns, 53 UDP/TCP);
+- `shop.yaml`, `loadgen.yaml`, `aiops.yaml`: reguły allow z tablicy, po jednej polityce na workload i kierunek (`<workload>-ingress`, `<workload>-egress`).
+
+Polityki się sumują: pod przyjmuje i wysyła tylko ruch dopuszczony przez którąś z nich. Namespace intruder nie ma polityk: pod `intruder` (`curlimages/curl`, czeka na `kubectl exec`) gra atakującego z wnętrza klastra, a jego ruch do orders odrzuca polityka `orders-ingress`. Cilium wpuszcza do poda ruch z jego węzła niezależnie od polityk (`allow-localhost`), więc sondy kubeleta działają.
+
+Reguły wskazują pody etykietami, a namespace'y etykietą `kubernetes.io/metadata.name`. Zmiana etykiety albo portu workloadu wymaga zmiany reguły:
+
+| Etykieta poda | Namespace | Nadaje ją |
+|---|---|---|
+| `app.kubernetes.io/name`: `frontend`, `orders`, `fault-runner`, `locust`, `anomaly-detector` | shop, loadgen, aiops | Deploymenty (T05, T08, T18, T24) |
+| `role: fault-runner` | loadgen | Deployment fault-runner (T08); jedyny klient `/faults/*` w orders |
+| `app.kubernetes.io/name: prometheus` | monitoring | prometheus-operator (T16) |
+| `app.kubernetes.io/name: loki` | monitoring | chart Loki (T17) |
+
+Nowy workload w shop, loadgen albo aiops dopisuje wiersz w tablicy przepływów i reguły w `deploy/base/networkpolicies/`; bez nich ma tylko DNS.
+
+Test: `tests/security/test_network_policies.py` (marker `security`). Sonda w podzie źródłowym trwa najwyżej 5 s; Cilium porzuca odrzucony pakiet bez odpowiedzi, więc odrzucenie to przekroczenie czasu. Test sprawdza:
+- dozwolone: frontend → orders (`POST /order` frontendu), fault-runner → orders `/healthz`, fault-runner → frontend, intruder → frontend;
+- odrzucane: intruder → orders, orders → frontend, orders → internet, frontend → internet, fault-runner → internet (1.1.1.1:443; bez wyjścia klastra do internetu te trzy przypadki są pomijane);
+- politykę default-deny w shop, loadgen i aiops;
+- odrzucenie intruder → orders z powodem `POLICY_DENIED` w Hubble.
+
+Ręcznie: `make hubble-relay`, w drugim terminalu `hubble observe --verdict DROPPED --from-namespace intruder`. Bufor Hubble ma 4095 przepływów na węzeł (w spokojnym klastrze kilkanaście minut), więc przepływ trzeba wywołać tuż przed odczytem. W Hubble UI (`make hubble-ui`) adres `http://localhost:12000/?namespace=intruder&verdicts=2` pokazuje tylko odrzucone przepływy:
+
+![Hubble UI: przepływ intruder → orders odrzucony przez NetworkPolicy](img/hubble-intruder-orders-dropped.png)
 
 Używamy wyłącznie `networking.k8s.io/v1` NetworkPolicy, żeby te same manifesty działały w chmurze (T29).
 

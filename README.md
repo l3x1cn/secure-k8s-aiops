@@ -62,10 +62,10 @@ make prometheus    # Prometheus (od T16): http://localhost:9090
 make alertmanager  # Alertmanager (od T16): http://localhost:9093
 ```
 
-Testy bezpieczeństwa na działającym klastrze (kubectl z mise w PATH; `make test-security` dojdzie w T26):
+Testy bezpieczeństwa na działającym klastrze (kubectl i hubble z mise w PATH; `make test-security` dojdzie w T26):
 
 ```bash
-uv run --locked pytest tests/security  # RBAC (T11): konta usług bez tokenu API, role team:developers i team:sre
+uv run --locked pytest tests/security  # RBAC (T11) i NetworkPolicy (T12): konta usług, role zespołu, dozwolone i odrzucane przepływy
 ```
 
 ## Usługi
@@ -78,7 +78,7 @@ docker build -f services/orders/Dockerfile -t ghcr.io/l3x1cn/secure-k8s-aiops/or
 ORDERS_API_TOKEN=dev uv run python -m frontend        # uruchomienie lokalne
 ```
 
-Manifesty są w `deploy/base/{frontend,orders,fault-runner}`, a konta usług i role zespołu (RBAC) w `deploy/base/rbac`; tag obrazu ustawia overlay. Do klastra obrazy `:dev` buduje i ładuje `make images` (krok `make up`).
+Manifesty są w `deploy/base/{frontend,orders,fault-runner,intruder}`, konta usług i role zespołu (RBAC) w `deploy/base/rbac`, a NetworkPolicy w `deploy/base/networkpolicies`; tag obrazów budowanych w projekcie ustawia overlay. Do klastra obrazy `:dev` buduje i ładuje `make images` (krok `make up`).
 
 ### Awarie (fault-runner)
 
