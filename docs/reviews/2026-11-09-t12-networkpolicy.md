@@ -9,6 +9,7 @@ Zakres: `90dd23ed9ef80253817545ba5db7f73a481d33c6..HEAD` (4 commity zadań i com
 ---
 
 ### [LOW] MAINT-001: intruder uruchamia `sleep infinity` jako PID 1, który ignoruje SIGTERM
+**Status:** ✅ Fixed (2026-11-09)
 
 **ID:** MAINT-001
 **Location:** `deploy/base/intruder/deployment.yaml:37`
@@ -35,6 +36,7 @@ Ok. 30 s oczekiwania przy każdym usunięciu, drenażu, rolloucie po podbiciu ob
 ---
 
 ### [LOW] MAINT-002: komentarz w `orders-ingress` obiecuje ochronę ścieżki `/faults/*`, której reguła L4 nie daje
+**Status:** ✅ Fixed (2026-11-09)
 
 **ID:** MAINT-002
 **Location:** `deploy/base/networkpolicies/shop.yaml:60`
@@ -61,6 +63,7 @@ Wyrównaj też komentarz w `deploy/base/fault-runner/deployment.yaml:18`.
 ---
 
 ### [LOW] DOC-001: komentarz przy `make deploy` nie wymienia NetworkPolicy
+**Status:** ✅ Fixed (2026-11-09)
 
 **ID:** DOC-001
 **Location:** `Makefile:101`

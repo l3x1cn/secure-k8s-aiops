@@ -57,7 +57,7 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: frontend
-        # Etykieta z T08: tylko fault-runner może wołać /faults/*.
+        # Z loadgen tylko fault-runner (etykieta role z T08). Reguła działa na L4: /faults/* chroni X-Fault-Token.
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: loadgen

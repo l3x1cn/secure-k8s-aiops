@@ -15,7 +15,7 @@ spec:
       labels:
         app.kubernetes.io/name: fault-runner
         app.kubernetes.io/part-of: secure-k8s-aiops
-        # Selektor NetworkPolicy (T12): tylko ten pod może wołać /faults/* w orders.
+        # Selektor NetworkPolicy (T12): z loadgen tylko ten pod dosięga orders; /faults/* chroni X-Fault-Token.
         role: fault-runner
     spec:
       # Własne konto bez uprawnień RBAC (T11, deploy/base/rbac). Kontener tylko czeka na `kubectl exec`
