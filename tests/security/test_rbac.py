@@ -27,11 +27,12 @@ SERVICE_ACCOUNTS = [
     ("aiops", "anomaly-detector"),
     ("intruder", "intruder"),
 ]
-# Wdrożone przed T11; locust, anomaly-detector i intruder dochodzą w T18, T24 i T12.
+# Wdrożone workloady; locust i anomaly-detector dochodzą w T18 i T24.
 DEPLOYED_WORKLOADS = {
     ("shop", "frontend"),
     ("shop", "orders"),
     ("loadgen", "fault-runner"),
+    ("intruder", "intruder"),
 }
 
 TEAM_IDENTITIES = {
