@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
   - namespaces.yaml
   - rbac
+  - networkpolicies
   - fault-runner
   - intruder
   - frontend

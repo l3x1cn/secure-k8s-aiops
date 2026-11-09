@@ -1,0 +1,76 @@
+# Przepływy w shop (T12, docs/architektura.md „Przepływy sieciowe”). Peer z namespaceSelector i podSelector
+# w jednym elemencie listy `from`/`to` wymaga obu warunków naraz; osobne elementy listy to alternatywa.
+# orders nie ma reguły egress poza DNS (dns.yaml), więc orders → frontend i orders → internet są odrzucane.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-ingress
+  namespace: shop
+  labels:
+    app.kubernetes.io/part-of: secure-k8s-aiops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: frontend
+  policyTypes: [Ingress]
+  ingress:
+    # Publiczna usługa: dowolne źródło (NodePort, Locust, fault-runner, intruder, Prometheus), tylko port 8080.
+    - ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-egress
+  namespace: shop
+  labels:
+    app.kubernetes.io/part-of: secure-k8s-aiops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: frontend
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: orders
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: orders-ingress
+  namespace: shop
+  labels:
+    app.kubernetes.io/part-of: secure-k8s-aiops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: orders
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: frontend
+        # Etykieta z T08: tylko fault-runner może wołać /faults/*.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: loadgen
+          podSelector:
+            matchLabels:
+              role: fault-runner
+        # Prometheus (T16): prometheus-operator nadaje podom app.kubernetes.io/name=prometheus.
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 8080

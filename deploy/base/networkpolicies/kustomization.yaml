@@ -1,0 +1,11 @@
+# NetworkPolicy (T12, docs/architektura.md „Przepływy sieciowe”): default-deny w shop, loadgen i aiops
+# oraz jawnie dozwolone przepływy. Bez pola namespace: polityki leżą w trzech namespace'ach,
+# więc każdy obiekt podaje swój jawnie (jak deploy/base/rbac).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - default-deny.yaml
+  - dns.yaml
+  - shop.yaml
+  - loadgen.yaml
+  - aiops.yaml
