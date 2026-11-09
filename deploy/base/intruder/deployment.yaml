@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: intruder
+  labels:
+    app.kubernetes.io/name: intruder
+    app.kubernetes.io/part-of: secure-k8s-aiops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: intruder
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: intruder
+        app.kubernetes.io/part-of: secure-k8s-aiops
+    spec:
+      # Własne konto bez uprawnień RBAC (T11, deploy/base/rbac); pod nie dostaje tokenu API.
+      serviceAccountName: intruder
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        # Obraz działa jako curl_user (uid 100); 10001 jak w pozostałych workloadach (Trivy KSV-0020, KSV-0021).
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: intruder
+          # Atakujący z wnętrza klastra (T12): namespace intruder nie ma NetworkPolicy, a test
+          # (tests/security/test_network_policies.py) i demo uruchamiają curl przez `kubectl exec`.
+          # Obraz zewnętrzny przypięty tagiem i digestem indeksu (wszystkie architektury); overlay go nie zmienia.
+          # Podbicie: digest z `docker buildx imagetools inspect docker.io/curlimages/curl:<wersja>`,
+          # potem `trivy image --severity HIGH,CRITICAL --ignore-unfixed <obraz>` bez wyników.
+          image: docker.io/curlimages/curl:8.23.0@sha256:3fb7e13e5d179a845c97d78204f3f1064d1907037f26a3ebf91710571151fd93
+          command: [sleep, infinity]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
