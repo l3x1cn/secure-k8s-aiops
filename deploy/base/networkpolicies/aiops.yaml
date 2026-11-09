@@ -1,0 +1,60 @@
+# Przepływy anomaly-detector (T24): Prometheus pobiera /metrics, a detektor czyta cechy z Prometheusa
+# i zdarzenia z Lokiego. Etykiety: prometheus-operator nadaje app.kubernetes.io/name=prometheus (T16),
+# chart Loki app.kubernetes.io/name=loki (T17).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: anomaly-detector-ingress
+  namespace: aiops
+  labels:
+    app.kubernetes.io/part-of: secure-k8s-aiops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: anomaly-detector
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: anomaly-detector-egress
+  namespace: aiops
+  labels:
+    app.kubernetes.io/part-of: secure-k8s-aiops
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: anomaly-detector
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 9090
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: loki
+      ports:
+        - protocol: TCP
+          port: 3100
