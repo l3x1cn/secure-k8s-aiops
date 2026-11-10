@@ -9,6 +9,7 @@ Zakres: `249cbc57612717cd49710a74635b2df218919067..HEAD` (3 commity zadań), dos
 ---
 
 ### [LOW] MAINT-001: sprawdzenie UID 10001 wyłącza się bez błędu, gdy zmieni się prefiks obrazów projektu
+**Status:** ✅ Fixed (2026-11-10)
 
 **ID:** MAINT-001
 **Location:** `tests/security/test_pod_security.py:26`

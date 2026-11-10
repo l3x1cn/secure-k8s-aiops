@@ -134,6 +134,9 @@ def test_own_containers_are_hardened():
     listed = get_json("pods", "-A", "-l", PART_OF)
     pods = [p for p in listed["items"] if "deletionTimestamp" not in p["metadata"]]
     assert pods, f"brak podów z etykietą {PART_OF} (make deploy)"
+    images = [c["image"] for p in pods for c in p["spec"]["containers"]]
+    # Bez obrazu projektu sprawdzenie UID nic nie obejmuje (np. po zmianie IMAGE_REPO).
+    assert any(image.startswith(OWN_IMAGE_REPO) for image in images), images
     problems = []
     for pod in pods:
         namespace, name = pod["metadata"]["namespace"], pod["metadata"]["name"]

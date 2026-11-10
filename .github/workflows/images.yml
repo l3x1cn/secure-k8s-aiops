@@ -19,7 +19,7 @@ permissions:
   contents: read
 
 env:
-  # = IMAGE_REPO z Makefile: zmieniaj razem.
+  # = IMAGE_REPO z Makefile i OWN_IMAGE_REPO z tests/security/test_pod_security.py: zmieniaj razem.
   IMAGE_REPO: ghcr.io/l3x1cn/secure-k8s-aiops
 
 jobs:
