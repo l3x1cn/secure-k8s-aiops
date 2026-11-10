@@ -1,11 +1,18 @@
-# Namespace'y z docs/architektura.md („Namespace'y i Pod Security”), T04; kube-system zostaje bez zmian.
-# Etykieta enforce według tabeli; warn, audit i test Pod Security dodaje T13.
+# Namespace'y i poziomy Pod Security z docs/architektura.md („Namespace'y i Pod Security”), T04 i T13;
+# kube-system zostaje bez zmian. Każdy namespace ma trzy etykiety PSA z tym samym poziomem:
+# - enforce odrzuca pod, który łamie poziom;
+# - warn ostrzega przy kubectl apply Deploymentu, którego szablon poda łamie poziom (enforce sprawdza tylko pody);
+# - audit dopisuje naruszenie do zdarzenia w logu audytu serwera API (kind nie ma logu audytu).
+# Bez etykiety PSA bierze warn z enforce, a audit z konfiguracji serwera API, więc wszystkie trzy są jawne.
+# Test: tests/security/test_pod_security.py.
 apiVersion: v1
 kind: Namespace
 metadata:
   name: shop
   labels:
     pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
 ---
 apiVersion: v1
 kind: Namespace
@@ -13,6 +20,8 @@ metadata:
   name: loadgen
   labels:
     pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
 ---
 apiVersion: v1
 kind: Namespace
@@ -20,6 +29,8 @@ metadata:
   name: aiops
   labels:
     pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
 ---
 apiVersion: v1
 kind: Namespace
@@ -27,11 +38,18 @@ metadata:
   name: intruder
   labels:
     pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
 ---
 apiVersion: v1
 kind: Namespace
 metadata:
   name: monitoring
   labels:
-    # Wyjątek z tabeli: node-exporter (T16) i Alloy (T17) potrzebują dostępu do hosta.
+    # Wyjątek z tabeli. PSA działa na cały namespace, a node-exporter (T16: hostNetwork, hostPID, hostPath /, /proc
+    # i /sys) oraz Alloy (T17: logi z węzła) potrzebują dostępu do hosta, którego zabrania już poziom baseline.
+    # warn i audit też privileged: ostrzeżenia o zamierzonych wyjątkach przy każdym make up byłyby szumem.
+    # Pody tworzą tu tylko charty z make up i ich operatory; zespół ma w RBAC tylko odczyt (T11).
     pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/warn: privileged
+    pod-security.kubernetes.io/audit: privileged
