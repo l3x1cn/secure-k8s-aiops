@@ -66,7 +66,7 @@ make alertmanager  # Alertmanager (od T16): http://localhost:9093
 Testy bezpieczeństwa na działającym klastrze (kubectl i hubble z mise w PATH; `make test-security` dojdzie w T26):
 
 ```bash
-uv run --locked pytest tests/security  # RBAC (T11) i NetworkPolicy (T12): konta usług, role zespołu, dozwolone i odrzucane przepływy
+uv run --locked pytest tests/security  # RBAC (T11), NetworkPolicy (T12), Pod Security (T13): konta usług, role zespołu, przepływy, odrzucenie poda uprzywilejowanego, securityContext podów
 ```
 
 ## Usługi

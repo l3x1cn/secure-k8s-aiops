@@ -10,7 +10,7 @@ KUBE_CONTEXT := kind-$(CLUSTER_NAME)
 CILIUM_CHART := oci://quay.io/cilium/charts/cilium
 PROMETHEUS_OPERATOR_CRDS_CHART := oci://ghcr.io/prometheus-community/charts/prometheus-operator-crds
 # Obrazy budowane w projekcie (w deploy/base bez tagu; overlay local ustawia :dev).
-# CI (.github/workflows/images.yml, T10) publikuje je w GHCR z tagiem sha-<7 znaków SHA commita>; IMAGE_REPO jest też w env tego workflow: zmieniaj razem.
+# CI (.github/workflows/images.yml, T10) publikuje je w GHCR z tagiem sha-<7 znaków SHA commita>; IMAGE_REPO jest też w env tego workflow i jako OWN_IMAGE_REPO w tests/security/test_pod_security.py: zmieniaj razem.
 IMAGE_REPO := ghcr.io/l3x1cn/secure-k8s-aiops
 # Namespace'y z Deploymentami aplikacji (etykieta app.kubernetes.io/part-of=secure-k8s-aiops), na które czeka deploy.
 APP_NAMESPACES := shop loadgen aiops intruder
