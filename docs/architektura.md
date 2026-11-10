@@ -48,7 +48,7 @@ Obrazy budowane w projekcie nazywają się `ghcr.io/l3x1cn/secure-k8s-aiops/<naz
 
 ## Namespace'y i Pod Security
 
-| Namespace | Zawartość | PSA `enforce` |
+| Namespace | Zawartość | PSA (`enforce`, `warn`, `audit`) |
 |---|---|---|
 | shop | frontend, orders | restricted |
 | loadgen | locust, fault-runner | restricted |
@@ -57,7 +57,27 @@ Obrazy budowane w projekcie nazywają się `ghcr.io/l3x1cn/secure-k8s-aiops/<naz
 | monitoring | kube-prometheus-stack, Loki, Alloy, Mailpit | privileged; wyjątek: node-exporter i Alloy potrzebują dostępu do hosta |
 | kube-system | Cilium, Hubble, CoreDNS | bez zmian |
 
-Namespace'y opisuje `deploy/base/namespaces.yaml` (T04); `make up` stosuje go przed sekretami i chartami. Etykieta `pod-security.kubernetes.io/enforce` odpowiada tabeli, a `warn`, `audit` i test dodaje T13.
+Namespace'y opisuje `deploy/base/namespaces.yaml` (T04, T13); `make up` stosuje go przed sekretami i chartami. Każdy namespace z tabeli poza kube-system ma trzy etykiety `pod-security.kubernetes.io/<tryb>` z poziomem z tabeli:
+- `enforce` odrzuca pod, który łamie poziom;
+- `warn` dodaje ostrzeżenie `would violate PodSecurity` do odpowiedzi na `kubectl apply` Deploymentu, którego szablon poda łamie poziom. `enforce` sprawdza tylko pody, więc taki Deployment powstaje, a odrzucone pody widać dopiero w zdarzeniach ReplicaSetu;
+- `audit` dopisuje naruszenie do zdarzenia w logu audytu serwera API; kind nie ma logu audytu.
+
+Bez etykiety PSA bierze `warn` z `enforce`, a `audit` z konfiguracji serwera API (w kind privileged). Jawne etykiety dają te same poziomy w każdym klastrze, także w overlayu cloud (T29).
+
+PSA działa na cały namespace, więc w monitoring każdy pod może być uprzywilejowany. Wymagają tego node-exporter (T16: `hostNetwork`, `hostPID`, hostPath `/`, `/proc` i `/sys`) i Alloy (T17: logi z węzła), a zabrania już poziom baseline. `warn` i `audit` mają tam też privileged, bo ostrzeżenia o zamierzonych wyjątkach przy każdym `make up` byłyby szumem. Pody w monitoring tworzą tylko charty z `make up` i ich operatory; zespół ma w RBAC tylko odczyt (T11).
+
+Kontenery własnych workloadów (tabela w sekcji „RBAC”) mają securityContext (T13) według wzoru `deploy/base/frontend/deployment.yaml`:
+- pod: `runAsNonRoot: true`, `runAsUser` i `runAsGroup` 10001, `seccompProfile.type: RuntimeDefault`;
+- kontener: `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, `capabilities.drop: [ALL]` bez `add`;
+- jedyny zapisywalny katalog to `/tmp` z wolumenu `emptyDir` z `sizeLimit: 16Mi`.
+
+Obrazy budowane w projekcie mają `USER 10001:10001`. Obraz zewnętrzny, który działa z dowolnym UID, też dostaje 10001 (intruder: obraz curl ma użytkownika `curl_user`, uid 100). Obraz zewnętrzny, który z UID 10001 nie działa, dostaje swój domyślny UID bez roota, wpisany liczbą: kubelet nie uruchomi kontenera z `runAsNonRoot: true`, gdy obraz podaje użytkownika nazwą. PSA restricted nie wymaga `readOnlyRootFilesystem`, UID 10001 ani `/tmp`; pilnuje ich test.
+
+Test: `tests/security/test_pod_security.py` (marker `security`); na działającym klastrze `uv run --locked pytest tests/security/test_pod_security.py`. Sprawdza:
+- `kubectl apply --dry-run=server` poda z `privileged: true` w shop, loadgen, aiops i intruder kończy się błędem `violates PodSecurity "restricted:latest"`;
+- każdy kontener podów z etykietą `app.kubernetes.io/part-of=secure-k8s-aiops` (poza usuwanymi) ma `runAsNonRoot: true`, `readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]` bez `add`, `seccompProfile.type: RuntimeDefault` i `/tmp` z wolumenu `emptyDir`. Kontener z obrazem projektu ma też `runAsUser` 10001.
+
+Nowy workload z tą etykietą test obejmuje bez zmian w kodzie testu. `runAsGroup`, UID obrazów zewnętrznych, `sizeLimit` i brak innych zapisywalnych montowań sprawdza tylko review.
 
 ## RBAC
 

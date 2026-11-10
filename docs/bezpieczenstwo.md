@@ -1,6 +1,6 @@
 # Model zagrożeń i macierz kontroli
 
-Dokument opisuje, przed czym broni się platforma, jakimi kontrolami i jakim testem automatycznym każdą z nich sprawdzamy (T07). Stan na 9.11.2026 (`main` po T12). Kolumna „Stan” mówi, czy test już działa w `main`, czy dopiero dojdzie w podanym zadaniu.
+Dokument opisuje, przed czym broni się platforma, jakimi kontrolami i jakim testem automatycznym każdą z nich sprawdzamy (T07). Stan na 10.11.2026 (`main` po T13). Kolumna „Stan” mówi, czy test już działa w `main`, czy dopiero dojdzie w podanym zadaniu.
 
 Zadanie, które dodaje zasób, przepływ sieciowy, sekret, obraz albo uprawnienie, aktualizuje macierz w tym samym PR. Zaakceptowane ryzyko dopisuje się do „Ryzyk szczątkowych” z uzasadnieniem i warunkiem powrotu do tematu.
 
@@ -68,7 +68,7 @@ Każdy z czterech wymogów z [karty projektu](karta-projektu.md#zakres-mvp) ma k
 
 | Wymóg | Kontrola | Zadanie | Test automatyczny | Stan |
 |---|---|---|---|---|
-| W1 Ograniczenie uprawnień | konta usług bez tokenu API i bez bindingów; role zespołu tylko do odczytu, bez secrets i exec; PSA `restricted` i securityContext | T11, T13 | `tests/security/test_rbac.py::test_own_pods_have_no_service_account_token`, `::test_permission_matrix`, `::test_team_roles_are_read_only`; `tests/security/test_pod_security.py` | RBAC działa; test PSA w T13 |
+| W1 Ograniczenie uprawnień | konta usług bez tokenu API i bez bindingów; role zespołu tylko do odczytu, bez secrets i exec; PSA `restricted` i securityContext | T11, T13 | `tests/security/test_rbac.py::test_own_pods_have_no_service_account_token`, `::test_permission_matrix`, `::test_team_roles_are_read_only`; `tests/security/test_pod_security.py` | RBAC i test PSA działają |
 | W2 Brak publicznych sekretów | sekrety tworzone przy wdrożeniu (`make secrets`); gitleaks na całej historii w CI; gitleaks w pre-commit | T04, T06, T14 | wymagany job CI `secrets` (`make gitleaks`; zablokował PR #45); `tests/security/test_secrets.py` | job `secrets` działa; test i pre-commit w T14 |
 | W3 Skan obrazów | `trivy image --ignore-unfixed --severity CRITICAL,HIGH` przed publikacją; `trivy config deploy/` | T15 | kroki `trivy image` w `images.yml` i `trivy config` w `ci.yml`; testowy PR z `FROM python:3.8-slim` ma być zablokowany | T15 |
 | W4 Test niedozwolonego połączenia | default-deny w shop, loadgen i aiops z jawną listą przepływów; odrzucenie widoczne w Hubble; alert `PolicyDeniedConnections` | T12, T19, T26 | `tests/security/test_network_policies.py::test_intruder_to_orders_is_denied`, `::test_hubble_shows_policy_denied_intruder_to_orders`; `tests/security/mutation_check.sh` | testy sieci działają; alert w T19, test mutacyjny w T26 |
@@ -85,8 +85,8 @@ Każdy z czterech wymogów z [karty projektu](karta-projektu.md#zakres-mvp) ma k
 | Z2 | wychodzący ruch poda jako cecha ML (`service:network_tx_bytes:rate1m`) | T16, T23 | ewaluacja detekcji | T30 |
 | Z3 Eskalacja uprawnień | każdy własny workload na własnym ServiceAccount z `automountServiceAccountToken: false` i bez Role ani bindingów | T11 | `tests/security/test_rbac.py::test_service_account_does_not_automount_token`, `::test_own_pods_have_no_service_account_token`, `::test_service_accounts_have_no_rbac_bindings`, `::test_own_deployments_use_their_service_account` | działa |
 | Z3 | role `developer` i `sre-readonly`: tylko get, list, watch; bez secrets, exec, attach, port-forward, proxy i `nodes/proxy` | T11 | `tests/security/test_rbac.py::test_permission_matrix`, `::test_team_roles_are_read_only`, `::test_sre_reads_every_listable_resource_except_secrets` | działa |
-| Z3 | PSA `enforce: restricted` w shop, loadgen, aiops i intruder | T04, T13 | `tests/security/test_pod_security.py` (`kubectl apply --dry-run=server` uprzywilejowanego poda kończy się błędem) | etykieta działa od T04; test w T13 |
-| Z3 | securityContext: UID 10001, `readOnlyRootFilesystem`, `allowPrivilegeEscalation: false`, `drop: [ALL]`, `RuntimeDefault` | T05, T13 | `trivy config deploy/` bez HIGH i CRITICAL | T15 |
+| Z3 | PSA `restricted` (`enforce`, `warn`, `audit`) w shop, loadgen, aiops i intruder | T04, T13 | `tests/security/test_pod_security.py::test_privileged_pod_is_rejected` (`kubectl apply --dry-run=server` uprzywilejowanego poda kończy się błędem) | działa |
+| Z3 | securityContext: UID 10001, `readOnlyRootFilesystem`, `allowPrivilegeEscalation: false`, `drop: [ALL]`, `RuntimeDefault` | T05, T13 | `tests/security/test_pod_security.py::test_own_containers_are_hardened`; `trivy config deploy/` bez HIGH i CRITICAL | test działa; `trivy config` w CI w T15 |
 | Z3 | ruleset `main`: PR z jedną recenzją, bez force-push i usuwania, wymagane kontrole `lint`, `unit`, `secrets`, `manifests`, `images` | T06, T10 | wymagane kontrole CI (zablokowały PR #45, #46 i #50) | działa |
 | Z4 Wyciek sekretu | sekrety z `openssl rand -hex 32` tworzone przez `make secrets`, bez zapisu na dysk i wypisywania | T04, T14 | `tests/security/test_secrets.py`: w `deploy/` nie ma `kind: Secret` z `data` ani `stringData` | T14 |
 | Z4 | gitleaks na całej historii osiągalnej z HEAD | T06 | wymagany job CI `secrets` (`make gitleaks`) | działa |
