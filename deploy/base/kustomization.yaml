@@ -8,3 +8,5 @@ resources:
   - intruder
   - frontend
   - orders
+  # Reguły nagrywające i inne zasoby w monitoring (T16–T22).
+  - ../observability

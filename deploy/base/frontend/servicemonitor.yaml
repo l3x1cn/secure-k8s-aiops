@@ -1,0 +1,16 @@
+# /metrics frontendu dla Prometheusa (T16). prometheus-operator nadaje seriom etykiety namespace i service
+# (nazwa Service), na których opierają się reguły service:* (deploy/observability/recording-rules.yaml).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: frontend
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: secure-k8s-aiops
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: frontend
+  endpoints:
+    - port: http
+      path: /metrics

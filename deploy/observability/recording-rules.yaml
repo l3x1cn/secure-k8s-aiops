@@ -1,0 +1,137 @@
+# Reguły nagrywające service:* (T16) z docs/architektura.md („Kontrakt metryk i logów”): jedyne wejście
+# dla alertów regułowych (T19) i cech ML (T20). Każda seria ma etykiety namespace="shop" i service ∈ {frontend, orders}.
+# Skąd service:
+# - metryki aplikacji (http_*) i up: etykieta service z ServiceMonitora (nazwa Service);
+# - metryki kontenerów (cAdvisor, kube-state-metrics): nazwa kontenera aplikacji, równa nazwie usługi;
+# - metryki sieci poda (cAdvisor, kontener pause): złączenie po podzie z kube_pod_container_info;
+# - odrzucenia Hubble: source_workload/destination_workload (nazwa Deploymentu).
+# Bez ruchu HTTP service:http_errors_ratio:rate1m i service:http_latency_p95_seconds:1m mają wartość NaN (0/0),
+# a reguły http_* nie mają serii, dopóki usługa nie obsłuży pierwszego żądania (licznik bez serii).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: recording-rules
+  labels:
+    app.kubernetes.io/part-of: secure-k8s-aiops
+spec:
+  groups:
+    - name: service
+      interval: 30s
+      rules:
+        - record: service:cpu_usage_ratio_of_limit
+          expr: |
+            sum by (namespace, service) (
+              label_replace(
+                rate(container_cpu_usage_seconds_total{namespace="shop", container=~"frontend|orders"}[1m]),
+                "service", "$1", "container", "(.*)"
+              )
+            )
+            /
+            sum by (namespace, service) (
+              label_replace(
+                kube_pod_container_resource_limits{namespace="shop", container=~"frontend|orders", resource="cpu"},
+                "service", "$1", "container", "(.*)"
+              )
+            )
+        # max po podzie i kontenerze: po restarcie cAdvisor przez chwilę zgłasza też poprzedni kontener.
+        - record: service:memory_working_set_ratio_of_limit
+          expr: |
+            sum by (namespace, service) (
+              label_replace(
+                max by (namespace, pod, container) (
+                  container_memory_working_set_bytes{namespace="shop", container=~"frontend|orders"}
+                ),
+                "service", "$1", "container", "(.*)"
+              )
+            )
+            /
+            sum by (namespace, service) (
+              label_replace(
+                kube_pod_container_resource_limits{namespace="shop", container=~"frontend|orders", resource="memory"},
+                "service", "$1", "container", "(.*)"
+              )
+            )
+        - record: service:network_rx_bytes:rate1m
+          expr: |
+            sum by (namespace, service) (
+              rate(container_network_receive_bytes_total{namespace="shop"}[1m])
+              * on (namespace, pod) group_left (service)
+              max by (namespace, pod, service) (
+                label_replace(
+                  kube_pod_container_info{namespace="shop", container=~"frontend|orders"},
+                  "service", "$1", "container", "(.*)"
+                )
+              )
+            )
+        - record: service:network_tx_bytes:rate1m
+          expr: |
+            sum by (namespace, service) (
+              rate(container_network_transmit_bytes_total{namespace="shop"}[1m])
+              * on (namespace, pod) group_left (service)
+              max by (namespace, pod, service) (
+                label_replace(
+                  kube_pod_container_info{namespace="shop", container=~"frontend|orders"},
+                  "service", "$1", "container", "(.*)"
+                )
+              )
+            )
+        - record: service:http_requests:rate1m
+          expr: |
+            sum by (namespace, service) (
+              rate(http_requests_total{namespace="shop", service=~"frontend|orders"}[1m])
+            )
+        # Licznik z status=5xx powstaje dopiero przy pierwszym błędzie; `or ... * 0` daje wtedy 0 zamiast braku serii.
+        - record: service:http_errors_ratio:rate1m
+          expr: |
+            (
+              sum by (namespace, service) (
+                rate(http_requests_total{namespace="shop", service=~"frontend|orders", status=~"5.."}[1m])
+              )
+              or
+              sum by (namespace, service) (
+                rate(http_requests_total{namespace="shop", service=~"frontend|orders"}[1m])
+              ) * 0
+            )
+            /
+            sum by (namespace, service) (
+              rate(http_requests_total{namespace="shop", service=~"frontend|orders"}[1m])
+            )
+        - record: service:http_latency_p95_seconds:1m
+          expr: |
+            histogram_quantile(0.95,
+              sum by (namespace, service, le) (
+                rate(http_request_duration_seconds_bucket{namespace="shop", service=~"frontend|orders"}[1m])
+              )
+            )
+        - record: service:restarts:increase5m
+          expr: |
+            sum by (namespace, service) (
+              label_replace(
+                increase(kube_pod_container_status_restarts_total{namespace="shop", container=~"frontend|orders"}[5m]),
+                "service", "$1", "container", "(.*)"
+              )
+            )
+        # Odrzucenie, w którym usługa jest celem albo źródłem; ostatni składnik daje 0, gdy odrzuceń nie było
+        # (hubble_drop_total ma serię dopiero po pierwszym odrzuceniu). Metryki Hubble mają etykiety namespace
+        # i service celu scrape'u (kube-system, hubble-metrics), więc label_replace je nadpisuje.
+        - record: service:policy_drops:rate1m
+          expr: |
+            sum by (namespace, service) (
+              label_replace(
+                label_replace(
+                  rate(hubble_drop_total{reason="POLICY_DENIED", destination_namespace="shop", destination_workload=~"frontend|orders"}[1m]),
+                  "service", "$1", "destination_workload", "(.*)"
+                ),
+                "namespace", "$1", "destination_namespace", "(.*)"
+              )
+              or
+              label_replace(
+                label_replace(
+                  rate(hubble_drop_total{reason="POLICY_DENIED", source_namespace="shop", source_workload=~"frontend|orders"}[1m]),
+                  "service", "$1", "source_workload", "(.*)"
+                ),
+                "namespace", "$1", "source_namespace", "(.*)"
+              )
+              or
+              max by (namespace, service) (up{namespace="shop", service=~"frontend|orders"}) * 0
+            )

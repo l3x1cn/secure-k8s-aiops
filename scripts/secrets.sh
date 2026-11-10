@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sekrety aplikacji z docs/architektura.md („Sekrety”), tworzone przy wdrożeniu (T04; grafana-admin dopisze T14).
+# Sekrety z docs/architektura.md („Sekrety”), tworzone przy wdrożeniu (T04; grafana-admin od T16, bo czyta go Grafana).
 # Uruchamiaj przez `make secrets` (krok `make up`); argument: kontekst kubectl.
 # Istniejących sekretów nie zmienia, więc wartości są stabilne między kolejnymi `make up`.
 # Wartości z `openssl rand -hex 32` są tylko w zmiennych i w potoku do `kubectl create -f -`:
@@ -54,3 +54,14 @@ ensure_token_secret() { # nazwa namespace...
 
 ensure_token_secret orders-api-token shop
 ensure_token_secret fault-token shop loadgen
+
+# Logowanie do Grafany (T16): użytkownik admin i losowe hasło; chart czyta klucze admin-user i admin-password.
+if [ -n "$(k -n monitoring get secret grafana-admin --ignore-not-found -o name)" ]; then
+  echo "Secret monitoring/grafana-admin już istnieje."
+else
+  # Osobne przypisanie: błąd openssl zatrzymuje skrypt (set -e) zamiast tworzyć Secret z pustym hasłem.
+  password=$(openssl rand -hex 32)
+  printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: grafana-admin\n  namespace: monitoring\ntype: Opaque\nstringData:\n  admin-user: admin\n  admin-password: "%s"\n' \
+    "$password" | k create -f - >/dev/null
+  echo "Secret monitoring/grafana-admin utworzony."
+fi

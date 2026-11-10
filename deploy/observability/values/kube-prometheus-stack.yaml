@@ -1,0 +1,104 @@
+# Wartości chartu kube-prometheus-stack (T16). Wersja i digest: KUBE_PROMETHEUS_STACK_* w platform/versions.env;
+# instalacja: make observability (krok make up), release kube-prometheus-stack w namespace monitoring.
+# Wersja operatora w chartcie musi pasować do CRD z prometheus-operator-crds (PROMETHEUS_OPERATOR_CRDS_*):
+# chart z nowszym operatorem wymaga podbicia obu chartów w jednym PR.
+
+# CRD monitoring.coreos.com instaluje make cluster (chart prometheus-operator-crds, T03), przed Cilium.
+crds:
+  enabled: false
+
+prometheus:
+  prometheusSpec:
+    # Bez selektorów: Prometheus zbiera wszystkie ServiceMonitory, PodMonitory, Probe, ScrapeConfigi
+    # i PrometheusRule w klastrze (także Cilium i Hubble z kube-system), nie tylko te z etykietą release'u.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    scrapeConfigSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    # 15 s: okno rate(...[1m]) w regułach service:* ma 4 próbki. Reguły nagrywające mają własny krok 30 s.
+    scrapeInterval: 15s
+    evaluationInterval: 30s
+    retention: 3d
+    retentionSize: 4GB
+    # Dane przeżywają restart poda (eksport cech dla ML, T20); StorageClass standard z kind (local-path).
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 5Gi
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        memory: 2Gi
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests:
+        cpu: 10m
+        memory: 64Mi
+      limits:
+        memory: 128Mi
+
+grafana:
+  # Hasło admina z Secretu grafana-admin (klucze admin-user, admin-password), który tworzy make secrets.
+  admin:
+    existingSecret: grafana-admin
+  # localhost:3000 → NodePort 30300 (extraPortMappings w platform/kind/cluster.yaml).
+  service:
+    type: NodePort
+    nodePort: 30300
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+
+prometheusOperator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      memory: 256Mi
+
+# node-exporter (ryzyko R2 w docs/bezpieczenstwo.md): hostNetwork, hostPID i hostPath /, /proc, /sys tylko do odczytu,
+# UID 65534. Chart domyślnie ustawia tylko readOnlyRootFilesystem; bez eskalacji i capabilities kolektory działają tak samo.
+prometheus-node-exporter:
+  containerSecurityContext:
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    capabilities:
+      drop: [ALL]
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
+# W kind kube-controller-manager, kube-scheduler, etcd i kube-proxy wystawiają metryki tylko na 127.0.0.1
+# węzła, więc Prometheus ich nie pobierze: cele byłyby stale down, a reguły chartu dla tych komponentów
+# zgłaszałyby fałszywe alerty. Wyłączenie usuwa ServiceMonitory, usługi i reguły tych komponentów.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false

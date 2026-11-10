@@ -1,0 +1,17 @@
+# /metrics orders dla Prometheusa (T16). prometheus-operator nadaje seriom etykiety namespace i service
+# (nazwa Service), na których opierają się reguły service:* (deploy/observability/recording-rules.yaml).
+# Ruch z Prometheusa dopuszcza polityka orders-ingress (deploy/base/networkpolicies/shop.yaml).
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: orders
+  labels:
+    app.kubernetes.io/name: orders
+    app.kubernetes.io/part-of: secure-k8s-aiops
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: orders
+  endpoints:
+    - port: http
+      path: /metrics
