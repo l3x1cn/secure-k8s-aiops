@@ -41,6 +41,7 @@ class Product(BaseModel):
     price_pln: float
 
 
+# Identyfikatory są też w deploy/base/locust/locustfile.py (PRODUCTS): zmieniaj razem.
 PRODUCTS = {
     p.id: p
     for p in (
