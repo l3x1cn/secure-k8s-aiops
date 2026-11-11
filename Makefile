@@ -21,13 +21,13 @@ IMAGE_REPO := ghcr.io/l3x1cn/secure-k8s-aiops
 # Namespace'y z Deploymentami aplikacji (etykieta app.kubernetes.io/part-of=secure-k8s-aiops), na które czeka deploy.
 APP_NAMESPACES := shop loadgen aiops intruder monitoring
 
-.PHONY: doctor lint unit gitleaks manifests up down cluster namespaces secrets observability images deploy status urls grafana-password hubble-ui hubble-relay prometheus alertmanager
+.PHONY: doctor lint unit gitleaks manifests trivy-config up down cluster namespaces secrets observability images deploy status urls grafana-password hubble-ui hubble-relay prometheus alertmanager
 
 # Sprawdza narzędzia z mise.toml, dostęp do Dockera bez sudo, pamięć Dockera, Docker Buildx, openssl i limity inotify.
 doctor:
 	@bash scripts/doctor.sh
 
-# Kontrole CI (T06): każdy cel to jeden job w .github/workflows/ci.yml; lokalnie te same polecenia i wersje z mise.toml.
+# Kontrole CI (T06, T15): każdy cel to jeden job w .github/workflows/ci.yml (trivy-config to drugi krok joba manifests); lokalnie te same polecenia i wersje z mise.toml.
 # Lint i formatowanie Pythona (job lint): ruff, reguły w pyproject.toml; obejmuje też notebooki i bloki ```python w plikach .md (README, docs/):
 # od ruff 0.16 `ruff format` domyślnie formatuje je w Markdownie, więc PR tylko z dokumentacją z niesformatowanym blokiem nie przejdzie lint.
 lint:
@@ -49,6 +49,13 @@ gitleaks:
 # PrometheusRule → promtool check rules (scripts/manifests.sh).
 manifests:
 	@bash scripts/manifests.sh
+
+# Bramka Trivy dla manifestów (T15, drugi krok joba manifests): trivy config deploy/ przez scripts/trivy.sh; wyniki ze
+# wszystkimi poziomami w reports/trivy/config.json i config.sarif. Kod 1 przy znalezisku HIGH albo CRITICAL
+# albo przy wpisie .trivyignore bez uzasadnienia i daty przeglądu. Obrazy skanuje workflow Images
+# (lokalnie: bash scripts/trivy.sh image <nazwa> <obraz>).
+trivy-config:
+	@bash scripts/trivy.sh config
 
 # Cała platforma jedną komendą: klaster → namespace'y i sekrety → charty obserwowalności → obrazy → aplikacje, na końcu adresy.
 # Namespace'y i sekrety tworzy observability przez zależność secrets.

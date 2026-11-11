@@ -1,0 +1,10 @@
+# Wyjątki bramki Trivy (T15). Czytają go scripts/trivy.sh, czyli job manifests w ci.yml (trivy config deploy/)
+# oraz joby build i push w images.yml (trivy image), a także make trivy-config lokalnie.
+# Wyjątek tylko wtedy, gdy znaleziska nie da się dziś usunąć z obrazu ani manifestu. Reguła (sprawdza ją scripts/trivy.sh):
+# - nad wpisem albo grupą wpisów, bez pustej linii pomiędzy, komentarz z uzasadnieniem: dlaczego bez poprawki
+#   i co ogranicza ryzyko;
+# - wpis kończy się datą przeglądu exp:RRRR-MM-DD. Po tej dacie Trivy przestaje go stosować, więc bramka znów
+#   zgłasza znalezisko, a przegląd kończy się poprawką albo nowym wpisem z nową datą.
+# Wzór (identyfikator CVE/GHSA podatności albo ID reguły, np. KSV-0017):
+#   # <pakiet albo plik>: <dlaczego bez poprawki>; <co ogranicza ryzyko>
+#   CVE-RRRR-NNNNN exp:RRRR-MM-DD
