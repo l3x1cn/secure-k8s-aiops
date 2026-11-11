@@ -115,7 +115,7 @@ observability: secrets
 
 # Obrazy :dev budowane z korzenia repozytorium (workspace uv) i ładowane do węzłów kind.
 # --provenance=false: atestacja BuildKit w magazynie obrazów containerd psuje kind load (kubernetes-sigs/kind#3795).
-# Ta sama lista obrazów jest w matrixach jobów build i push w .github/workflows/images.yml i w deploy/overlays/local/kustomization.yaml (images:, newTag: dev): zmieniaj razem.
+# Ta sama lista obrazów jest w matrixach jobów build, push i sarif w .github/workflows/images.yml i w deploy/overlays/local/kustomization.yaml (images:, newTag: dev): zmieniaj razem.
 images:
 	docker build --provenance=false -f services/frontend/Dockerfile -t $(IMAGE_REPO)/frontend:dev .
 	docker build --provenance=false -f services/orders/Dockerfile -t $(IMAGE_REPO)/orders:dev .

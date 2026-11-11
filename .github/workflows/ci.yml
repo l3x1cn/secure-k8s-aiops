@@ -1,8 +1,10 @@
-# CI (T06): każdy PR i każdy push na main. Joby lint, unit, secrets i manifests to wymagane
+# CI (T06, T15): każdy PR i każdy push na main. Joby lint, unit, secrets i manifests to wymagane
 # kontrole rulesetu gałęzi main: zmiana nazwy joba wymaga zmiany rulesetu.
-# Każdy job uruchamia cel make, który działa też lokalnie. Narzędzia instaluje jdx/mise-action
-# z mise.toml (tylko te, których job potrzebuje); wersja mise to jedna zmienna CI_MISE_VERSION poniżej (= min_version z mise.toml).
+# Każdy z tych jobów uruchamia cele make, które działają też lokalnie. Narzędzia instaluje jdx/mise-action
+# z mise.toml (tylko te, których job potrzebuje); wersja mise to zmienna CI_MISE_VERSION poniżej (= min_version z mise.toml).
 # Z mise.lock akcja instaluje narzędzia z `--locked` (sumy kontrolne); zmiana wersji w mise.toml wymaga nowego mise.lock w tym samym PR.
+# Job manifests ma też bramkę Trivy dla deploy/ (T15, make trivy-config). Job sarif, jedyny z security-events: write
+# i spoza rulesetu, wysyła jej wynik (SARIF z artefaktu trivy-config) do GitHub code scanning; nie uruchamia kodu z repozytorium.
 # Akcje przypięte po pełnym SHA commita z komentarzem wersji (lekcja z kompromitacji trivy-action,
 # CVE-2026-33634); repozytorium wymaga takiego przypięcia (sha_pinning_required), podbija je Dependabot.
 name: CI
@@ -16,7 +18,7 @@ permissions:
   contents: read
 
 env:
-  # = min_version z mise.toml: zmieniaj razem.
+  # = min_version z mise.toml i CI_MISE_VERSION w images.yml: zmieniaj razem.
   CI_MISE_VERSION: "2026.10.25"
 
 jobs:
@@ -76,5 +78,41 @@ jobs:
       - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
         with:
           version: ${{ env.CI_MISE_VERSION }}
-          install_args: kustomize kubeconform promtool yq
+          install_args: kustomize kubeconform promtool yq trivy
       - run: make manifests
+      # Bramka Trivy (T15): działa też po błędzie make manifests, więc PR dostaje oba wyniki.
+      - id: trivy
+        if: ${{ !cancelled() }}
+        run: make trivy-config
+      # Także po czerwonej bramce: wyniki trafiają do raportu testów (T31) i do joba sarif.
+      - if: ${{ !cancelled() && steps.trivy.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-config
+          path: reports/trivy/
+
+  # Wynik bramki Trivy z joba manifests do GitHub code scanning (zakładka Security; w PR także adnotacje
+  # i kontrola „Code scanning results”). Bez artefaktu (skan się nie odbył) upload jest pomijany.
+  sarif:
+    needs: manifests
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write # upload SARIF do GitHub code scanning (github/codeql-action/upload-sarif)
+    steps:
+      # upload-sarif czyta commit z checkoutu i liczy odciski alertów z plików deploy/.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # pattern zamiast name: brak artefaktu to 0 pobranych plików, nie błąd.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: trivy-config
+          path: reports/trivy
+      - if: ${{ hashFiles('reports/trivy/config.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: reports/trivy/config.sarif
+          category: trivy-config

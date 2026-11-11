@@ -1,12 +1,17 @@
-# Obrazy (T10): Docker Buildx buduje obrazy projektu z korzenia repozytorium (workspace uv), jak `make images`.
-# - PR: job build buduje każdy obraz bez publikacji (token tylko do odczytu). Job images to jedna wymagana
-#   kontrola rulesetu main, zielona tylko wtedy, gdy zbudowały się wszystkie obrazy; zmiana nazwy joba images
-#   wymaga zmiany rulesetu.
-# - Push na main: job push, jedyny z packages: write, publikuje ghcr.io/l3x1cn/secure-k8s-aiops/<nazwa>:sha-<7 znaków
-#   SHA commita>; tagu latest nie ma.
+# Obrazy (T10, T15): Docker Buildx buduje obrazy projektu z korzenia repozytorium (workspace uv), jak `make images`.
+# - PR: job build buduje każdy obraz bez publikacji (token tylko do odczytu), ładuje go do Dockera runnera i skanuje
+#   bramką Trivy. Job images to jedna wymagana kontrola rulesetu main, zielona tylko wtedy, gdy wszystkie obrazy się
+#   zbudowały i przeszły bramkę; zmiana nazwy joba images wymaga zmiany rulesetu.
+# - Push na main: job push, jedyny z packages: write, buduje obraz, skanuje go tą samą bramką, a dopiero po zielonej
+#   bramce loguje się do GHCR i publikuje ghcr.io/l3x1cn/secure-k8s-aiops/<nazwa>:sha-<7 znaków SHA commita>;
+#   tagu latest nie ma.
+# - Bramka Trivy (T15, scripts/trivy.sh image): podatność HIGH albo CRITICAL z dostępną poprawką kończy job błędem.
+#   JSON i SARIF ze wszystkimi poziomami trafiają do artefaktu trivy-image-<nazwa> (reports/trivy/, raport testów T31).
+# - Job sarif, jedyny z security-events: write, wysyła SARIF z tego artefaktu do GitHub code scanning; nie uruchamia
+#   kodu z repozytorium i nie należy do rulesetu.
 # Tagi i etykiety OCI (m.in. org.opencontainers.image.source i revision) nadaje docker/metadata-action.
 # context: . zamiast domyślnego kontekstu Git akcji build-push: budowa z drzewa roboczego i .dockerignore, jak lokalnie.
-# Lista obrazów jest w matrixach jobów build i push, w celu images w Makefile i w deploy/overlays/local/kustomization.yaml (images:, newTag: dev): zmieniaj razem.
+# Lista obrazów jest w matrixach jobów build, push i sarif, w celu images w Makefile i w deploy/overlays/local/kustomization.yaml (images:, newTag: dev): zmieniaj razem.
 # Akcje przypięte po pełnym SHA commita z komentarzem wersji, jak w ci.yml; podbija je Dependabot.
 name: Images
 
@@ -21,6 +26,8 @@ permissions:
 env:
   # = IMAGE_REPO z Makefile i OWN_IMAGE_REPO z tests/security/test_pod_security.py: zmieniaj razem.
   IMAGE_REPO: ghcr.io/l3x1cn/secure-k8s-aiops
+  # = min_version z mise.toml i CI_MISE_VERSION w ci.yml: zmieniaj razem.
+  CI_MISE_VERSION: "2026.10.25"
 
 jobs:
   build:
@@ -44,6 +51,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Trivy z mise.toml (suma z mise.lock). Bez cache akcji: workflow publikuje obrazy, a binarka nie może
+      # pochodzić z cache, który zapisał inny przebieg.
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          version: ${{ env.CI_MISE_VERSION }}
+          install_args: trivy
+          cache: false
       # Obraz BuildKit przypięty po digeście (domyślnie moby/buildkit:buildx-stable-1, ruchomy tag); Dependabot go nie podbija: zmieniaj ręcznie razem z setup-buildx.
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
@@ -54,13 +68,27 @@ jobs:
           images: ${{ env.IMAGE_REPO }}/${{ matrix.image }}
           tags: type=sha
           flavor: latest=false
+      # load: obraz trafia do Dockera runnera, skąd czyta go Trivy (--image-src docker).
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           file: ${{ matrix.dockerfile }}
           push: false
+          load: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+      - id: trivy
+        name: Bramka Trivy
+        env:
+          IMAGE: ${{ matrix.image }}
+          IMAGE_REF: ${{ steps.meta.outputs.tags }}
+        run: bash scripts/trivy.sh image "$IMAGE" "$IMAGE_REF"
+      # Także po czerwonej bramce: wyniki trafiają do raportu testów i do joba sarif.
+      - if: ${{ !cancelled() && steps.trivy.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-image-${{ matrix.image }}
+          path: reports/trivy/
 
   # Wymagana kontrola rulesetu main: jeden kontekst niezależny od listy obrazów w matrixie.
   # always() zamiast !cancelled(): po anulowaniu przebiegu job ma się wykonać i zawieść (pominięta wymagana kontrola liczy się jako zaliczona).
@@ -100,21 +128,50 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # Jak w jobie build: Trivy z mise.toml, bez cache akcji.
+      - uses: jdx/mise-action@f5be966e4a917d54244728e6a5fdcd1d93a35e6c # v5.2.6
+        with:
+          version: ${{ env.CI_MISE_VERSION }}
+          install_args: trivy
+          cache: false
       # Obraz BuildKit przypięty po digeście (domyślnie moby/buildkit:buildx-stable-1, ruchomy tag); Dependabot go nie podbija: zmieniaj ręcznie razem z setup-buildx.
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
           driver-opts: image=moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
-      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
       - id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: ${{ env.IMAGE_REPO }}/${{ matrix.image }}
           tags: type=sha
           flavor: latest=false
+      # Bramka przed publikacją: najpierw obraz do Dockera runnera i skan, jak w jobie build.
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+      - id: trivy
+        name: Bramka Trivy
+        env:
+          IMAGE: ${{ matrix.image }}
+          IMAGE_REF: ${{ steps.meta.outputs.tags }}
+        run: bash scripts/trivy.sh image "$IMAGE" "$IMAGE_REF"
+      - if: ${{ !cancelled() && steps.trivy.outcome != 'skipped' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: trivy-image-${{ matrix.image }}
+          path: reports/trivy/
+      # Logowanie dopiero po zielonej bramce: dane logowania do GHCR (~/.docker/config.json) nie istnieją, gdy działa Trivy.
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Ten sam builder, kontekst i Dockerfile co przy skanie: warstwy pochodzą z cache buildera, więc publikowany
+      # obraz ma te same warstwy co obraz po skanie (krok apt-get upgrade nie wykonuje się ponownie).
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
@@ -122,3 +179,35 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+  # Wyniki bramki Trivy do GitHub code scanning (zakładka Security; w PR także adnotacje i kontrola
+  # „Code scanning results”): pobiera artefakt trivy-image-<nazwa> joba build (PR) albo push (main) i wysyła SARIF.
+  # Bez artefaktu (obraz się nie zbudował, skan się nie odbył) upload jest pomijany.
+  sarif:
+    name: sarif (${{ matrix.image }})
+    needs: [build, push]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write # upload SARIF do GitHub code scanning (github/codeql-action/upload-sarif)
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [frontend, orders, fault-runner]
+    steps:
+      # upload-sarif czyta commit z checkoutu.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # pattern zamiast name: brak artefaktu to 0 pobranych plików, nie błąd.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: trivy-image-${{ matrix.image }}
+          path: reports/trivy
+      - if: ${{ hashFiles('reports/trivy/*.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: reports/trivy/image-${{ matrix.image }}.sarif
+          category: trivy-image-${{ matrix.image }}
