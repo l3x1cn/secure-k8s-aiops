@@ -1,3 +1,8 @@
+# Bez „Entering/Leaving directory” także przy make -C i w sub-make: cele, które wypisują wartość
+# (make grafana-password), dają na stdout samą wartość i nadają się do podstawienia w powłoce.
+# Musi stać przed pierwszym $(shell): po nim GNU make 4.4 ignoruje tę flagę przy make -C.
+MAKEFLAGS += --no-print-directory
+
 # Narzędzia w wersjach z mise.toml mają pierwszeństwo przed systemowymi,
 # także gdy mise nie jest aktywowane w powłoce.
 export PATH := $(shell mise bin-paths 2>/dev/null | tr '\n' ':')$(PATH)
@@ -16,7 +21,7 @@ IMAGE_REPO := ghcr.io/l3x1cn/secure-k8s-aiops
 # Namespace'y z Deploymentami aplikacji (etykieta app.kubernetes.io/part-of=secure-k8s-aiops), na które czeka deploy.
 APP_NAMESPACES := shop loadgen aiops intruder
 
-.PHONY: doctor lint unit gitleaks manifests up down cluster namespaces secrets observability images deploy status urls hubble-ui hubble-relay prometheus alertmanager
+.PHONY: doctor lint unit gitleaks manifests up down cluster namespaces secrets observability images deploy status urls grafana-password hubble-ui hubble-relay prometheus alertmanager
 
 # Sprawdza narzędzia z mise.toml, dostęp do Dockera bez sudo, pamięć Dockera, Docker Buildx, openssl i limity inotify.
 doctor:
@@ -133,6 +138,11 @@ urls:
 	@echo "Hubble Relay  make hubble-relay, potem hubble observe (localhost:4245)"
 	@echo "Prometheus    make prometheus, potem http://localhost:9090 (T16)"
 	@echo "Alertmanager  make alertmanager, potem http://localhost:9093 (T16)"
+
+# Hasło admina Grafany (T14) z Secretu grafana-admin w monitoring, który tworzy make secrets; użytkownik: admin.
+# Wypisuje tylko hasło i znak nowego wiersza, więc nadaje się do podstawienia w powłoce. Bez Secretu: błąd kubectl (NotFound).
+grafana-password:
+	@kubectl --context $(KUBE_CONTEXT) -n monitoring get secret grafana-admin -o go-template='{{index .data "admin-password" | base64decode}}{{"\n"}}'
 
 # Hubble UI w przeglądarce: port-forward na localhost:12000, Ctrl+C kończy.
 hubble-ui:

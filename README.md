@@ -25,12 +25,15 @@ Lokalny klaster kind z Cilium i Hubble, dwie usługi (frontend, orders), RBAC, N
 ## Przygotowanie środowiska
 
 ```bash
-mise install   # narzędzia w wersjach z mise.toml
-make doctor    # narzędzia, Docker bez sudo, pamięć Dockera, Docker Buildx, openssl, limity inotify
-uv sync        # Python 3.13 i zależności w .venv
+mise install                  # narzędzia w wersjach z mise.toml
+make doctor                   # narzędzia, Docker bez sudo, pamięć Dockera, Docker Buildx, openssl, limity inotify
+uv sync                       # Python 3.13 i zależności w .venv
+uvx pre-commit@4.7.0 install  # hook gitleaks przed commitem (T14), raz po klonie
 ```
 
 `make` używa narzędzi z `mise.toml` także bez aktywacji mise w powłoce. Poza `make` (np. `kubectl`, `uv sync`) aktywuj mise według [instrukcji](https://mise.jdx.dev/getting-started.html) albo poprzedzaj polecenia `mise exec --`.
+
+Hook z `.pre-commit-config.yaml` przy każdym commicie uruchamia gitleaksa z `mise.toml` (`mise exec`) na zmianach w indeksie. Gdy znajdzie sekret, commit nie powstaje, a log pokazuje plik, linię i regułę z wartością `REDACTED`. Commit wymaga więc `mise` w PATH. Skrypt hooka wskazuje Pythona z cache uv: po `uv cache clean` hook kończy się błędem „`pre-commit` not found” i blokuje commit; wtedy powtórz `uvx pre-commit@4.7.0 install`. Całą historię i tak skanuje job CI `secrets` (`make gitleaks`).
 
 ## Klaster lokalny
 
@@ -53,11 +56,7 @@ make images         # obrazy :dev frontend, orders i fault-runner, załadowane d
 make deploy         # overlay deploy/overlays/local (z ServiceMonitorami i regułami); czeka na gotowość Deploymentów
 ```
 
-Grafana: http://localhost:3000, użytkownik `admin`, hasło z sekretu (`make grafana-password` dojdzie w T14):
-
-```bash
-kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d; echo
-```
+Grafana: http://localhost:3000, użytkownik `admin`, hasło wypisuje `make grafana-password` (losowe, z Secretu `monitoring/grafana-admin`, który tworzy `make secrets`).
 
 Tag `:dev` się nie zmienia, więc po zmianie kodu usługi: `make images`, potem `kubectl -n <namespace> rollout restart deployment/<nazwa>`.
 
@@ -70,10 +69,10 @@ make prometheus    # Prometheus (od T16): http://localhost:9090
 make alertmanager  # Alertmanager (od T16): http://localhost:9093
 ```
 
-Testy na działającym klastrze (kubectl i hubble z mise w PATH; `make test-security` dojdzie w T26, `make test` w T27):
+Testy na działającym klastrze (kubectl, kustomize i hubble z mise w PATH; `make test-security` dojdzie w T26, `make test` w T27); `tests/security/test_secrets.py` działa też bez klastra:
 
 ```bash
-uv run --locked pytest tests/security       # RBAC (T11), NetworkPolicy (T12), Pod Security (T13): konta usług, role zespołu, przepływy, odrzucenie poda uprzywilejowanego, securityContext podów
+uv run --locked pytest tests/security       # RBAC (T11), NetworkPolicy (T12), Pod Security (T13), sekrety (T14): konta usług, role zespołu, przepływy, odrzucenie poda uprzywilejowanego, securityContext podów, brak wartości sekretów w deploy/, gitleaks na historii HEAD
 uv run --locked pytest tests/observability  # metryki (T16): cele aplikacji, Hubble, reguły service:* (ok. 1 min, ruch z fault-runner spike)
 ```
 

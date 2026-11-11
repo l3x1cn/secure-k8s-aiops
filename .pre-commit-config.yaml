@@ -1,0 +1,18 @@
+# Hooki pre-commit (T14). Instalacja raz po klonie: `uvx pre-commit@4.7.0 install` (README).
+# gitleaks skanuje zmiany w indeksie (--staged) i przy znalezisku przerywa commit; całą historię HEAD
+# skanuje job CI `secrets` (make gitleaks). Ten sam gitleaks co w make i CI: wersja z mise.toml przez
+# `mise exec`, więc commit wymaga mise w PATH (bez niego hook kończy się błędem i commit nie powstaje).
+# Nie używamy hooka z repozytorium gitleaks/gitleaks: buduje on własną kopię gitleaksa ze źródeł (Go)
+# w wersji zapisanej poza mise.toml.
+minimum_pre_commit_version: "4.4.0"
+repos:
+  - repo: local
+    hooks:
+      - id: gitleaks
+        name: gitleaks
+        # Flagi jak w hooku gitleaks/gitleaks v8.30.1, plus --no-banner jak w make gitleaks.
+        entry: mise exec -- gitleaks git --pre-commit --staged --redact --no-banner --verbose
+        # unsupported (pre-commit >= 4.4.0, dawniej system): polecenie z PATH, bez środowiska pre-commit.
+        language: unsupported
+        # gitleaks git przyjmuje najwyżej jedną ścieżkę repozytorium, nie listę plików.
+        pass_filenames: false
