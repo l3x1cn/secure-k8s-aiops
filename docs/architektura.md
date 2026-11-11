@@ -216,7 +216,7 @@ Odbiorca: Alertmanager → Mailpit (SMTP `mailpit.monitoring.svc:1025`).
 
 ## Sekrety
 
-Sekrety tworzy `make secrets` (`scripts/secrets.sh`, krok `make up`): tylko brakujące, z `openssl rand -hex 32`, bez zapisu wartości na dysk i bez wypisywania; nigdy nie trafiają do git. `orders-api-token` i `fault-token` (ta sama wartość w shop i loadgen) skrypt tworzy od T04, `grafana-admin` (użytkownik `admin`, losowe hasło) od T16, bo bez niego Grafana nie wstaje. `make grafana-password` i testy sekretów dochodzą w T14.
+Sekrety tworzy `make secrets` (`scripts/secrets.sh`, krok `make up`): tylko brakujące, z `openssl rand -hex 32`, bez zapisu wartości na dysk i bez wypisywania; nigdy nie trafiają do git. `orders-api-token` i `fault-token` (ta sama wartość w shop i loadgen) skrypt tworzy od T04, `grafana-admin` (użytkownik `admin`, losowe hasło) od T16, bo bez niego Grafana nie wstaje. Hasło Grafany wypisuje na żądanie `make grafana-password` (T14). Pilnują tego (T14): `tests/security/test_secrets.py` (w plikach `deploy/` i w wyniku `kustomize build` overlayów nie ma Secretu z `data` ani `stringData`, a `make gitleaks` nie ma znalezisk w historii HEAD) oraz hook pre-commit z gitleaksem (`.pre-commit-config.yaml`), który lokalnie blokuje commit z sekretem.
 
 | Secret | Namespace | Klucze | Użycie |
 |---|---|---|---|
@@ -250,8 +250,9 @@ Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FA
 ```
 .
 ├── .github/               # workflows/ci.yml: kontrole PR (T06); workflows/images.yml: obrazy i GHCR (T10); dependabot.yml (T06)
+├── .pre-commit-config.yaml # hook gitleaks przed commitem (T14)
 ├── mise.toml              # wersje narzędzi (T02)
-├── Makefile               # doctor (T02); cluster, hubble-ui, hubble-relay (T03); up, down, namespaces, secrets, images, deploy, status, urls, prometheus, alertmanager (T04); lint, unit, gitleaks, manifests (T06); observability (T16); test, report (dalej)
+├── Makefile               # doctor (T02); cluster, hubble-ui, hubble-relay (T03); up, down, namespaces, secrets, images, deploy, status, urls, prometheus, alertmanager (T04); lint, unit, gitleaks, manifests (T06); observability (T16); grafana-password (T14); test, report (dalej)
 ├── pyproject.toml         # uv workspace, Python 3.13 (T02)
 ├── platform/              # kind, Cilium, versions.env (T03, T04)
 ├── deploy/
