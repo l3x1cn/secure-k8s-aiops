@@ -12,14 +12,14 @@ Ten dokument to wspólny kontrakt dla zadań T01–T36. Zmiana kontraktu wymaga 
 | kube-prometheus-stack (Prometheus, Alertmanager, Grafana) | przypięta w `versions.env` | monitoring | T16 |
 | Loki (chart z `grafana-community/helm-charts`, SingleBinary) | przypięta w `versions.env` | monitoring | T17 |
 | Grafana Alloy | przypięta w `versions.env` | monitoring | T17 |
-| Mailpit | przypięta po digest | monitoring | T19 |
+| Mailpit (`docker.io/axllent/mailpit`) | v1.33.0, przypięta po digest w `deploy/observability/mailpit/deployment.yaml` | monitoring | T19 |
 | frontend, orders (Python 3.13, FastAPI) | — | shop | T05 |
 | locust (`docker.io/locustio/locust`) | 2.47.0, przypięta po digest w `deploy/base/locust/deployment.yaml` | loadgen | T18 |
 | fault-runner | — | loadgen | T08 |
 | anomaly-detector (scikit-learn) | — | aiops | T24 |
 | intruder (`docker.io/curlimages/curl`) | 8.23.0, przypięta po digest w `deploy/base/intruder/deployment.yaml` | intruder | T12 |
 
-Narzędzia CLI w `mise.toml` (T02): Python 3.13.16, kind 0.33.0, kubectl 1.37.1, helm 4.3.1, kustomize 5.8.3, cilium-cli 0.20.1, hubble 1.20.2 (`github:cilium/hubble`), trivy 0.76.0, gitleaks 8.30.1, kubeconform 0.8.0, promtool 3.15.0, uv 0.13.7, ruff 0.17.3 (T06); opentofu 1.13.1 dla rozszerzenia T33.
+Narzędzia CLI w `mise.toml` (T02): Python 3.13.16, kind 0.33.0, kubectl 1.37.1, helm 4.3.1, kustomize 5.8.3, cilium-cli 0.20.1, hubble 1.20.2 (`github:cilium/hubble`), trivy 0.76.0, gitleaks 8.30.1, kubeconform 0.8.0, promtool 3.15.0, uv 0.13.7, ruff 0.17.3 (T06), yq 4.54.1 (T19); opentofu 1.13.1 dla rozszerzenia T33.
 
 Wersje oznaczone „przypięta” wybiera się w dniu realizacji zadania (najnowsza stabilna) i wpisuje do `platform/versions.env`, gdy czyta je Makefile; obraz zewnętrzny używany tylko w manifeście z `deploy/` (intruder, locust) przypina się tagiem i digestem w tym manifeście. Trivy nigdy w wersji 0.69.4 (złośliwe wydanie, CVE-2026-33634). Charty Helm z rejestrów OCI przypina się wersją i digestem manifestu (`*_CHART_DIGEST` w `platform/versions.env`): `make cluster` instaluje `<chart>@<digest>` z `--version`, a Helm przerywa instalację, gdy tag wersji wskazuje inny digest.
 
@@ -67,12 +67,12 @@ Namespace'y opisuje `deploy/base/namespaces.yaml` (T04, T13); `make up` stosuje 
 
 Bez etykiety PSA bierze `warn` z `enforce`, a `audit` z konfiguracji serwera API (w kind privileged). Jawne etykiety dają te same poziomy w każdym klastrze, także w overlayu cloud (T29).
 
-PSA działa na cały namespace, więc w monitoring każdy pod może być uprzywilejowany. Wymagają tego node-exporter (T16: `hostNetwork`, `hostPID`, hostPath `/`, `/proc` i `/sys`) i Alloy (T17: logi z węzła), a zabrania już poziom baseline. `warn` i `audit` mają tam też privileged, bo ostrzeżenia o zamierzonych wyjątkach przy każdym `make up` byłyby szumem. Pody w monitoring tworzą tylko charty z `make up` i ich operatory; zespół ma w RBAC tylko odczyt (T11).
+PSA działa na cały namespace, więc w monitoring każdy pod może być uprzywilejowany. Wymagają tego node-exporter (T16: `hostNetwork`, `hostPID`, hostPath `/`, `/proc` i `/sys`) i Alloy (T17: logi z węzła), a zabrania już poziom baseline. `warn` i `audit` mają tam też privileged, bo ostrzeżenia o zamierzonych wyjątkach przy każdym `make up` byłyby szumem. Pody w monitoring tworzą tylko charty z `make up` i ich operatory oraz Mailpit z `make deploy` (T19); zespół ma w RBAC tylko odczyt (T11).
 
 Kontenery własnych workloadów (tabela w sekcji „RBAC”) mają securityContext (T13) według wzoru `deploy/base/frontend/deployment.yaml`:
 - pod: `runAsNonRoot: true`, `runAsUser` i `runAsGroup` 10001, `seccompProfile.type: RuntimeDefault`;
 - kontener: `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, `capabilities.drop: [ALL]` bez `add`;
-- jedyny zapisywalny katalog to `/tmp` z wolumenu `emptyDir` z `sizeLimit: 16Mi`.
+- jedyny zapisywalny katalog to `/tmp` z wolumenu `emptyDir` z `sizeLimit: 16Mi` (Mailpit: 64Mi na bazę SQLite z najwyżej 1000 wiadomości).
 
 Obrazy budowane w projekcie mają `USER 10001:10001`. Obraz zewnętrzny, który działa z dowolnym UID, też dostaje 10001 (intruder: obraz curl ma użytkownika `curl_user`, uid 100). Obraz zewnętrzny, który z UID 10001 nie działa, dostaje swój domyślny UID bez roota, wpisany liczbą: kubelet nie uruchomi kontenera z `runAsNonRoot: true`, gdy obraz podaje użytkownika nazwą. PSA restricted nie wymaga `readOnlyRootFilesystem`, UID 10001 ani `/tmp`; pilnuje ich test.
 
@@ -96,6 +96,7 @@ Każdy własny workload działa na własnym ServiceAccount o swojej nazwie, z `a
 | fault-runner | loadgen | T08 |
 | anomaly-detector | aiops | T24 |
 | intruder | intruder | T12 |
+| mailpit | monitoring | T19 |
 
 Nowy workload dopisuje konto w trzech miejscach: `deploy/base/rbac/serviceaccounts.yaml`, `SERVICE_ACCOUNTS` w `tests/security/test_rbac.py` i tabela powyżej.
 
@@ -215,7 +216,16 @@ Test: `tests/observability/test_metrics.py` (marker `observability`); na działa
 | AnomalyDetected | ml | `aiops_anomaly == 1` | 1m | `detector=ml`, `severity=warning` |
 | IncidentConfirmed | hybrid | `aiops_anomaly == 1` i aktywny alert `detector="rules"` dla tego samego `service` | 0m | `detector=hybrid`, `severity=critical` |
 
-Odbiorca: Alertmanager → Mailpit (SMTP `mailpit.monitoring.svc:1025`).
+Alerty regułowe są w PrometheusRule `rules-baseline` (`deploy/observability/alert-rules.yaml`, T19, krok 30 s). Wejściem są tylko reguły `service:*`, więc każdy alert ma etykiety `namespace="shop"` i `service`, a adnotacje `summary` i `description` są po polsku. Bez ruchu HTTP reguły `http_errors_ratio` i `http_latency_p95` mają NaN, więc HighErrorRate i HighLatency nie wystrzelą. `make manifests` (job `manifests` w CI) sprawdza `spec` każdego PrometheusRule z wyniku `kustomize build` przez `promtool check rules`; `yq` wycina `spec` do osobnego pliku.
+
+Odbiorca: Alertmanager → Mailpit (SMTP `mailpit.monitoring.svc:1025`). Konfiguracja Alertmanagera jest w wartościach chartu (`alertmanager.config` w `deploy/observability/values/kube-prometheus-stack.yaml`), więc zmienia ją `make observability`:
+- `route`: odbiorca `mailpit`, `group_by: [alertname, service]`, `group_wait: 30s`, `group_interval: 5m` (z chartu), `repeat_interval: 4h`. Watchdog i InfoInhibitor z reguł chartu idą do odbiorcy `null`. Pozostałe alerty chartu (np. KubePodCrashLooping) też trafiają do Mailpit;
+- `mailpit`: e-mail od `alertmanager@platforma.local` do `zespol@platforma.local`, `require_tls: false`. Temat ma postać `[FIRING:<liczba alertów>] <alertname> <service> (<wspólne etykiety>)`, np. `[FIRING:1] PolicyDeniedConnections orders (rules shop … warning)`; treść zawiera etykiety i adnotacje. E-maila o rozwiązaniu alertu nie ma (`send_resolved` domyślnie wyłączone dla e-maili);
+- `inhibit_rules` i `global` zostają z chartu (Helm scala mapy, a listy zastępuje).
+
+Mailpit (`deploy/observability/mailpit/`, stosuje go `make deploy`) przyjmuje pocztę na porcie 1025 i pokazuje ją w UI pod http://localhost:8025 (NodePort 30825). Trzyma najwyżej 1000 wiadomości w SQLite w `/tmp` (`emptyDir`), więc poczta znika z podem. Działa jako UID 10001, z tym samym securityContext co workloady w namespace'ach restricted, choć monitoring ma PSA privileged. Usługa `mailpit` (SMTP i HTTP) jest typu ClusterIP; UI wystawia osobna usługa `mailpit-ui` (tylko port HTTP), którą overlay `local` zmienia na NodePort 30825, tak jak frontend. Szukanie po API: `curl 'localhost:8025/api/v1/search?query=subject:PolicyDeniedConnections'`.
+
+Czas od zdarzenia do e-maila to suma: scrape (15 s), okno `rate` (1 min), krok reguł nagrywających i alertów (30 s), `for` alertu i `group_wait` (30 s). Zmierzone na kind (T19): PolicyDeniedConnections (`for: 1m`) 110–130 s od pierwszej próby intruder → orders (2 pomiary), HighErrorRate (`for: 2m`) 196 s od startu S3, osobny e-mail dla frontend i orders.
 
 ## Sekrety
 

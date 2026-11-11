@@ -26,6 +26,7 @@ SERVICE_ACCOUNTS = [
     ("loadgen", "fault-runner"),
     ("aiops", "anomaly-detector"),
     ("intruder", "intruder"),
+    ("monitoring", "mailpit"),
 ]
 # Wdrożone workloady; anomaly-detector dochodzi w T24.
 DEPLOYED_WORKLOADS = {
@@ -34,6 +35,7 @@ DEPLOYED_WORKLOADS = {
     ("loadgen", "locust"),
     ("loadgen", "fault-runner"),
     ("intruder", "intruder"),
+    ("monitoring", "mailpit"),
 }
 
 TEAM_IDENTITIES = {

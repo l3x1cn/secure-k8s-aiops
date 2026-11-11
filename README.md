@@ -53,7 +53,7 @@ make cluster        # kind (control-plane + 2 workery) z Cilium i Hubble
 make secrets        # namespace'y i brakujące sekrety; wartości nie trafiają na dysk ani na ekran
 make observability  # kube-prometheus-stack w monitoring (najpierw make secrets): Prometheus, Alertmanager, Grafana
 make images         # obrazy :dev frontend, orders i fault-runner, załadowane do kind
-make deploy         # overlay deploy/overlays/local (z ServiceMonitorami i regułami); czeka na gotowość Deploymentów
+make deploy         # overlay deploy/overlays/local (z ServiceMonitorami, regułami i Mailpit); czeka na gotowość Deploymentów
 ```
 
 Grafana: http://localhost:3000, użytkownik `admin`, hasło wypisuje `make grafana-password` (losowe, z Secretu `monitoring/grafana-admin`, który tworzy `make secrets`).
@@ -109,6 +109,18 @@ $FR fault errors --seconds 180 --param ratio=0.5   # S3
 $FR fault memory --param target_ratio=0.9          # S2, domyślnie 180 s
 $FR stop                                           # koniec bieżącej awarii
 $FR spike --users 50 --seconds 180                 # S6: skok ruchu na frontend
+```
+
+### Alerty (Mailpit)
+
+Alertmanager wysyła każdy alert e-mailem do Mailpit: http://localhost:8025 (UI, NodePort 30825). Alerty regułowe są w `deploy/observability/alert-rules.yaml`, a routing w `alertmanager.config` w `deploy/observability/values/kube-prometheus-stack.yaml` (zmiana: `make observability`). Opis i progi: [docs/architektura.md](docs/architektura.md#alerty).
+
+```bash
+# PolicyDeniedConnections: 2 min prób intruder → orders; e-mail po ok. 2 min
+kubectl -n intruder exec deploy/intruder -- sh -c 'end=$(($(date +%s)+120)); while [ $(date +%s) -lt $end ]; do curl -s -o /dev/null -m 1 http://orders.shop.svc:8080/healthz; sleep 1; done'
+# HighErrorRate: S3; wymaga ruchu HTTP (Locust z T18 albo fault-runner spike); e-mail po ok. 3–4 min
+kubectl -n loadgen exec deploy/fault-runner -- fault-runner fault errors --seconds 180 --param ratio=0.5
+curl -s 'localhost:8025/api/v1/search?query=subject:HighErrorRate'   # e-maile przez API Mailpit
 ```
 
 ## Jak pracujemy

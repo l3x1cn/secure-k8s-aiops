@@ -1,7 +1,9 @@
-# Zasoby obserwowalności w monitoring (T16; reguły alertów T19, dashboardy T22). Dołącza je deploy/base,
+# Zasoby obserwowalności w monitoring (T16; reguły alertów i Mailpit T19, dashboardy T22). Dołącza je deploy/base,
 # więc stosuje je make deploy, a waliduje make manifests. Wartości chartów Helm są w values/ i nie są zasobami.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: monitoring
 resources:
   - recording-rules.yaml
+  - alert-rules.yaml
+  - mailpit

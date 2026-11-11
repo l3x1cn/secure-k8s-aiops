@@ -1,4 +1,5 @@
-# Overlay local (kind, T04): obrazy :dev z `make images`, frontend na NodePort 30080 (localhost:8080), awarie włączone.
+# Overlay local (kind, T04): obrazy :dev z `make images`, frontend na NodePort 30080 (localhost:8080),
+# UI Mailpit na NodePort 30825 (localhost:8025, T19), awarie włączone.
 # Wdraża go `make deploy` (krok `make up`).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -32,6 +33,19 @@ patches:
           - name: http
             port: 8080
             nodePort: 30080
+  # localhost:8025 → NodePort 30825: UI Mailpit (T19); SMTP zostaje tylko w klastrze (usługa mailpit).
+  - patch: |-
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: mailpit-ui
+        namespace: monitoring
+      spec:
+        type: NodePort
+        ports:
+          - name: http
+            port: 8025
+            nodePort: 30825
   # /faults/* dla fault-runnera (docs/architektura.md, „Scenariusze awarii”).
   - patch: |-
       apiVersion: apps/v1

@@ -1,0 +1,83 @@
+# Alerty regułowe (T19) z docs/architektura.md („Alerty”): progi, `for` i etykiety stamtąd, zmieniaj razem.
+# Wejściem są wyłącznie reguły nagrywające service:* (recording-rules.yaml, T16), więc każdy alert ma etykiety
+# namespace="shop" i service ∈ {frontend, orders}; Alertmanager grupuje po alertname i service (wartości chartu).
+# Bez ruchu HTTP reguły http_errors_ratio i http_latency_p95 mają NaN, a porównanie z NaN jest fałszywe: brak alertu.
+# Sprawdzenie składni: make manifests (promtool check rules dla spec każdego PrometheusRule).
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: rules-baseline
+  labels:
+    app.kubernetes.io/part-of: secure-k8s-aiops
+spec:
+  groups:
+    - name: rules-baseline
+      interval: 30s
+      rules:
+        - alert: HighCPU
+          expr: service:cpu_usage_ratio_of_limit > 0.8
+          for: 2m
+          labels:
+            detector: rules
+            severity: warning
+          annotations:
+            summary: "{{ $labels.service }}: CPU powyżej 80% limitu"
+            description: >-
+              Usługa {{ $labels.service }} zużywa {{ $value | humanizePercentage }} limitu CPU od co najmniej 2 min.
+              Grozi throttling i wzrost czasu odpowiedzi.
+        - alert: HighMemory
+          expr: service:memory_working_set_ratio_of_limit > 0.85
+          for: 2m
+          labels:
+            detector: rules
+            severity: warning
+          annotations:
+            summary: "{{ $labels.service }}: pamięć powyżej 85% limitu"
+            description: >-
+              Usługa {{ $labels.service }} zajmuje {{ $value | humanizePercentage }} limitu pamięci od co najmniej 2 min.
+              Po przekroczeniu limitu kernel zabije kontener (OOMKilled).
+        - alert: HighErrorRate
+          expr: service:http_errors_ratio:rate1m > 0.05
+          for: 2m
+          labels:
+            detector: rules
+            severity: warning
+          annotations:
+            summary: "{{ $labels.service }}: ponad 5% odpowiedzi 5xx"
+            description: >-
+              Usługa {{ $labels.service }} odpowiada błędem 5xx na {{ $value | humanizePercentage }} żądań
+              (okno 1 min) od co najmniej 2 min.
+        - alert: HighLatency
+          expr: service:http_latency_p95_seconds:1m > 0.3
+          for: 2m
+          labels:
+            detector: rules
+            severity: warning
+          annotations:
+            summary: "{{ $labels.service }}: p95 czasu odpowiedzi powyżej 300 ms"
+            description: >-
+              95. percentyl czasu odpowiedzi usługi {{ $labels.service }} wynosi {{ $value | humanizeDuration }}
+              (okno 1 min) od co najmniej 2 min.
+        - alert: PodRestarts
+          expr: service:restarts:increase5m > 0
+          for: 0m
+          labels:
+            detector: rules
+            severity: warning
+          annotations:
+            summary: "{{ $labels.service }}: restart kontenera"
+            description: >-
+              Kontener usługi {{ $labels.service }} zrestartował się w ciągu ostatnich 5 min
+              (przyrost licznika: {{ $value | printf "%.0f" }}).
+        - alert: PolicyDeniedConnections
+          expr: service:policy_drops:rate1m > 0
+          for: 1m
+          labels:
+            detector: rules
+            severity: warning
+          annotations:
+            summary: "{{ $labels.service }}: połączenia odrzucone przez NetworkPolicy"
+            description: >-
+              Cilium odrzuca {{ $value | printf "%.2f" }} połączeń/s (POLICY_DENIED), w których usługa
+              {{ $labels.service }} jest celem albo źródłem, od co najmniej 1 min. To może być próba ruchu bocznego
+              z przejętego poda: sprawdź `hubble observe --verdict DROPPED`.

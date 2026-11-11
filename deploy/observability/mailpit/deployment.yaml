@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mailpit
+  labels:
+    app.kubernetes.io/name: mailpit
+    app.kubernetes.io/part-of: secure-k8s-aiops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mailpit
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mailpit
+        app.kubernetes.io/part-of: secure-k8s-aiops
+    spec:
+      # Własne konto bez uprawnień RBAC (T11, deploy/base/rbac); pod nie dostaje tokenu API.
+      serviceAccountName: mailpit
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        # Obraz działa jako root; 10001 jak w pozostałych workloadach (Trivy KSV-0020, KSV-0021).
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: mailpit
+          # Obraz zewnętrzny przypięty tagiem i digestem indeksu (wszystkie architektury); overlay go nie zmienia.
+          # Podbicie: digest z `docker buildx imagetools inspect docker.io/axllent/mailpit:<wersja>`,
+          # potem `trivy image --severity HIGH,CRITICAL --ignore-unfixed <obraz>` bez wyników.
+          image: docker.io/axllent/mailpit:v1.33.0@sha256:9b3a463be15354c0f0eba91697d80e3e0d8a5623ef0e627cacc836bc17fd5231
+          # Baza SQLite w /tmp (emptyDir): poczta znika z podem, jak w demo. --max: najstarsze wiadomości wypadają.
+          # --disable-version-check: bez zapytań do GitHuba o nowe wydania.
+          args:
+            - --max=1000
+            - --disable-version-check
+          ports:
+            - name: smtp
+              containerPort: 1025
+            - name: http
+              containerPort: 8025
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
