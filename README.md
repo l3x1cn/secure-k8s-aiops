@@ -73,7 +73,7 @@ Testy na działającym klastrze (kubectl, kustomize i hubble z mise w PATH; `mak
 
 ```bash
 uv run --locked pytest tests/security       # RBAC (T11), NetworkPolicy (T12), Pod Security (T13), sekrety (T14): konta usług, role zespołu, przepływy, odrzucenie poda uprzywilejowanego, securityContext podów, brak wartości sekretów w deploy/, gitleaks na historii HEAD
-uv run --locked pytest tests/observability  # metryki (T16): cele aplikacji, Hubble, reguły service:* (ok. 1 min, ruch z fault-runner spike)
+uv run --locked pytest tests/observability  # metryki (T16): cele aplikacji, Hubble, reguły service:* (ok. 1 min, ruch z fault-runner spike); ruch Locust (T18): okres ok. 30 min, pomijany przez pierwsze 65 min Locusta
 ```
 
 ## Usługi
@@ -86,7 +86,17 @@ docker build -f services/orders/Dockerfile -t ghcr.io/l3x1cn/secure-k8s-aiops/or
 ORDERS_API_TOKEN=dev uv run python -m frontend        # uruchomienie lokalne
 ```
 
-Manifesty są w `deploy/base/{frontend,orders,fault-runner,intruder}`, konta usług i role zespołu (RBAC) w `deploy/base/rbac`, a NetworkPolicy w `deploy/base/networkpolicies`; tag obrazów budowanych w projekcie ustawia overlay. Do klastra obrazy `:dev` buduje i ładuje `make images` (krok `make up`).
+Manifesty są w `deploy/base/{frontend,orders,fault-runner,locust,intruder}`, konta usług i role zespołu (RBAC) w `deploy/base/rbac`, a NetworkPolicy w `deploy/base/networkpolicies`; tag obrazów budowanych w projekcie ustawia overlay. Do klastra obrazy `:dev` buduje i ładuje `make images` (krok `make up`).
+
+### Ruch (Locust)
+
+`make deploy` uruchamia w loadgen Locusta bez interfejsu WWW. Ruch do frontendu rośnie i maleje z okresem 30 min (2–18 użytkowników, 70% `GET /`, 30% `POST /order`; szczegóły w [docs/architektura.md](docs/architektura.md#ruch-locust)). Profil jest w `deploy/base/locust/locustfile.py`; po zmianie wystarczy `make deploy`.
+
+```bash
+kubectl -n loadgen logs deploy/locust   # zmiany liczby użytkowników
+```
+
+W Prometheusie albo w Grafanie (Explore): `service:http_requests:rate1m{service="frontend"}`.
 
 ### Awarie (fault-runner)
 

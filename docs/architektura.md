@@ -14,17 +14,20 @@ Ten dokument to wspólny kontrakt dla zadań T01–T36. Zmiana kontraktu wymaga 
 | Grafana Alloy | przypięta w `versions.env` | monitoring | T17 |
 | Mailpit | przypięta po digest | monitoring | T19 |
 | frontend, orders (Python 3.13, FastAPI) | — | shop | T05 |
-| locust, fault-runner | — | loadgen | T18, T08 |
+| locust (`docker.io/locustio/locust`) | 2.47.0, przypięta po digest w `deploy/base/locust/deployment.yaml` | loadgen | T18 |
+| fault-runner | — | loadgen | T08 |
 | anomaly-detector (scikit-learn) | — | aiops | T24 |
 | intruder (`docker.io/curlimages/curl`) | 8.23.0, przypięta po digest w `deploy/base/intruder/deployment.yaml` | intruder | T12 |
 
 Narzędzia CLI w `mise.toml` (T02): Python 3.13.16, kind 0.33.0, kubectl 1.37.1, helm 4.3.1, kustomize 5.8.3, cilium-cli 0.20.1, hubble 1.20.2 (`github:cilium/hubble`), trivy 0.76.0, gitleaks 8.30.1, kubeconform 0.8.0, promtool 3.15.0, uv 0.13.7, ruff 0.17.3 (T06); opentofu 1.13.1 dla rozszerzenia T33.
 
-Wersje oznaczone „przypięta” wybiera się w dniu realizacji zadania (najnowsza stabilna) i wpisuje do `platform/versions.env`, gdy czyta je Makefile; obraz zewnętrzny używany tylko w manifeście z `deploy/` (intruder) przypina się tagiem i digestem w tym manifeście. Trivy nigdy w wersji 0.69.4 (złośliwe wydanie, CVE-2026-33634). Charty Helm z rejestrów OCI przypina się wersją i digestem manifestu (`*_CHART_DIGEST` w `platform/versions.env`): `make cluster` instaluje `<chart>@<digest>` z `--version`, a Helm przerywa instalację, gdy tag wersji wskazuje inny digest.
+Wersje oznaczone „przypięta” wybiera się w dniu realizacji zadania (najnowsza stabilna) i wpisuje do `platform/versions.env`, gdy czyta je Makefile; obraz zewnętrzny używany tylko w manifeście z `deploy/` (intruder, locust) przypina się tagiem i digestem w tym manifeście. Trivy nigdy w wersji 0.69.4 (złośliwe wydanie, CVE-2026-33634). Charty Helm z rejestrów OCI przypina się wersją i digestem manifestu (`*_CHART_DIGEST` w `platform/versions.env`): `make cluster` instaluje `<chart>@<digest>` z `--version`, a Helm przerywa instalację, gdy tag wersji wskazuje inny digest.
 
 Kubernetes 1.36 zamiast 1.37 to świadomy downgrade o jedną wersję (T03). kind 0.33.0 domyślnie stawia Kubernetes 1.37.0, ale Cilium 1.20 deklaruje testy e2e tylko dla Kubernetes 1.33–1.36 ([wymagania Cilium 1.20](https://docs.cilium.io/en/v1.20/network/kubernetes/requirements/)), więc węzły używają obrazu `kindest/node:v1.36.4`, zbudowanego dla kind 0.33.0. kubectl 1.37.1 z `mise.toml` zostaje, bo odchylenie o jedną wersję jest dozwolone. Na 1.37 przechodzimy, gdy przypięta wersja Cilium obejmie ją testami.
 
 Obrazy dostawców w przypiętych wersjach (Cilium 1.20.3 z Envoy i Hubble UI, `kindest/node:v1.36.4`) mają znane podatności HIGH i CRITICAL bez nowszego wydania upstream (Trivy 0.76.0, 21.10.2026). To zaakceptowane ryzyko szczątkowe R5 ([model zagrożeń](bezpieczenstwo.md#ryzyka-szczątkowe), T07): klaster kind słucha tylko na `127.0.0.1`, a bramka Trivy w CI (T15) obejmuje obrazy budowane w projekcie. Piny podbijamy, gdy wyjdzie Cilium 1.20.4 albo nowszy obraz `kindest/node` 1.36.
+
+`locustio/locust:2.47.0` (T18) też należy do R5: Trivy 0.76.0 (11.11.2026, `--ignore-unfixed`) zgłasza 2 CRITICAL i 9 HIGH w pakietach Debiana i Pythona (m.in. brotli, certifi, msgpack, urllib3). Poprawki istnieją w pakietach, ale nie ma jeszcze stabilnego wydania Locusta, które by je zawierało (2.46.7 ma ich więcej, a obrazy `2.47.1.devN` są przedpremierowe). Pod locust nie przyjmuje połączeń (default-deny, bez polityki ingress) i łączy się tylko z frontendem. Pin podbijamy przy następnym stabilnym wydaniu Locusta.
 
 ## Obrazy
 
@@ -155,8 +158,8 @@ Reguły wskazują pody etykietami, a namespace'y etykietą `kubernetes.io/metada
 Nowy workload w shop, loadgen albo aiops dopisuje wiersz w tablicy przepływów i reguły w `deploy/base/networkpolicies/`; bez nich ma tylko DNS.
 
 Test: `tests/security/test_network_policies.py` (marker `security`). Sonda w podzie źródłowym trwa najwyżej 5 s; Cilium porzuca odrzucony pakiet bez odpowiedzi, więc odrzucenie to przekroczenie czasu. Test sprawdza:
-- dozwolone: frontend → orders (`POST /order` frontendu), fault-runner → orders `/healthz`, fault-runner → frontend, intruder → frontend;
-- odrzucane: intruder → orders, orders → frontend, orders → internet, frontend → internet, fault-runner → internet (1.1.1.1:443; bez wyjścia klastra do internetu te trzy przypadki są pomijane);
+- dozwolone: frontend → orders (`POST /order` frontendu), fault-runner → orders `/healthz`, fault-runner → frontend, locust → frontend, intruder → frontend;
+- odrzucane: intruder → orders, orders → frontend, locust → orders, orders → internet, frontend → internet, fault-runner → internet, locust → internet (1.1.1.1:443; bez wyjścia klastra do internetu przypadki z internetem są pomijane);
 - politykę default-deny w shop, loadgen i aiops;
 - odrzucenie intruder → orders z powodem `POLICY_DENIED` w Hubble.
 
@@ -224,6 +227,16 @@ Sekrety tworzy `make secrets` (`scripts/secrets.sh`, krok `make up`): tylko brak
 | `fault-token` | shop, loadgen | `token` (ta sama wartość) | fault-runner → orders (`X-Fault-Token`); orders czyta go ze zmiennej `FAULT_TOKEN`, fault-runner z pliku `/var/run/secrets/fault-token/token` |
 | `grafana-admin` | monitoring | `admin-user`, `admin-password` | logowanie do Grafany |
 
+## Ruch (Locust)
+
+Locust (T18) daje stały ruch do frontendu, na którym uczy się detektor (T20, T23). Deployment `locust` w loadgen (`deploy/base/locust/`) uruchamia Locusta w trybie headless, bez interfejsu WWW i bez portu. Host to `http://frontend.shop.svc:8080`, a `locustfile.py` trafia do ConfigMap przez `configMapGenerator`. Nazwa ConfigMap ma sufiks z hasza treści, więc zmiana pliku i `make deploy` restartują poda.
+
+- **Użytkownicy:** `LoadTestShape` (`SineWithNoise`) wyznacza ich liczbę jako 10 + 8·sin(2πt / 30 min) plus szum gaussowski (σ = 1,5 użytkownika, losowany raz na minutę). Wynik jest zaokrąglany i obcinany do 2–18. Sinusoida zaczyna się od startu kontenera, a test nie kończy się sam.
+- **Żądania:** każdy użytkownik w 70% iteracji wysyła `GET /`, a w 30% `POST /order` z losowym produktem z katalogu frontendu i ilością 1–3. Między iteracjami czeka 1–3 s, więc ruch to ok. 1–9 żądań/s.
+- **Wyniki:** ruch widać w `service:http_requests:rate1m{service="frontend"}`. Logi Locusta (`kubectl -n loadgen logs deploy/locust`) pokazują tylko zmiany liczby użytkowników (`--only-summary`).
+
+Test: `tests/observability/test_traffic.py` (marker `observability`). Do reguły `service:http_requests:rate1m{service="frontend"}` z ostatniej godziny (krok 30 s) dopasowuje sinusoidy o okresach 10–60 min. Najlepsza ma okres 30 ± 5 min, amplitudę co najmniej 0,3 średniej i R² co najmniej 0,5. Godzina ruchu musi upłynąć od startu kontenera locust plus 5 min rozgrzewki; wcześniej test jest pomijany. W tej godzinie nie może być skoku ruchu S6 (`fault-runner spike --users 50`): kilkadziesiąt żądań/s przez 3 min psuje dopasowanie i test nie przechodzi. Krótki ruch z `fault-runner spike --users 2` w `test_metrics.py` mu nie przeszkadza. Przepływy Locusta sprawdza `tests/security/test_network_policies.py`.
+
 ## Scenariusze awarii
 
 Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FAULTS_ENABLED=true` (overlay `local`; w `base` jest `false`, a endpointy zwracają wtedy 404) i wymagają nagłówka `X-Fault-Token` (brak lub zły token: 403). `POST /faults/stop` kończy bieżącą awarię.
@@ -267,7 +280,7 @@ Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FA
 │   └── orders/            # (T05, T08)
 ├── aiops/                 # pakiet aiops: cechy, model, detektor, ewaluacja (T20–T25, T30)
 ├── chaos/                 # fault-runner i run.py (T08, T21)
-├── tests/                 # security/, observability/, e2e/ (T11–T14, T16, T26, T27)
+├── tests/                 # security/, observability/, e2e/ (T11–T14, T16, T18, T26, T27)
 ├── scripts/               # doctor.sh (T02), secrets.sh (T04, T14, T16), manifests.sh (T06) i skrypty pomocnicze
 ├── infra/                 # OpenTofu, rozszerzenie (T33)
 ├── reports/               # wyniki testów i przebiegów, poza git (T26–T31)

@@ -5,6 +5,7 @@ resources:
   - rbac
   - networkpolicies
   - fault-runner
+  - locust
   - intruder
   - frontend
   - orders

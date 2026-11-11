@@ -1,0 +1,81 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: locust
+  labels:
+    app.kubernetes.io/name: locust
+    app.kubernetes.io/part-of: secure-k8s-aiops
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: locust
+  template:
+    metadata:
+      labels:
+        # Selektor NetworkPolicy locust-egress (T12): z loadgen tylko do shop/frontend:8080.
+        app.kubernetes.io/name: locust
+        app.kubernetes.io/part-of: secure-k8s-aiops
+    spec:
+      # Własne konto bez uprawnień RBAC (T11, deploy/base/rbac); pod nie dostaje tokenu API.
+      serviceAccountName: locust
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        # Obraz działa jako użytkownik locust (uid 1000); 10001 jak w pozostałych workloadach (Trivy KSV-0020, KSV-0021).
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: locust
+          # Obraz zewnętrzny przypięty tagiem i digestem indeksu (wszystkie architektury); overlay go nie zmienia.
+          # Podbicie: digest z `docker buildx imagetools inspect docker.io/locustio/locust:<wersja>`, potem
+          # `trivy image --severity HIGH,CRITICAL --ignore-unfixed <obraz>`; znaleziska 2.47.0 opisuje ryzyko R5 (docs/bezpieczenstwo.md).
+          image: docker.io/locustio/locust:2.47.0@sha256:90fdf5b9632e67bb556d17784095652871be68318c5074731d911d4caaa42cc3
+          # Locust 2.47.0 nie reaguje na SIGTERM jako PID 1, więc kubelet czekałby cały terminationGracePeriodSeconds.
+          # Powłoka jako PID 1 przekazuje mu SIGTERM, który kończy go od razu. Po przerwanym `wait` powłoka wychodzi z kodem 143;
+          # gdy Locust sam się zakończy, kod wyjścia kontenera to jego kod.
+          command:
+            - sh
+            - -c
+            - 'locust "$@" & pid=$!; trap "kill -TERM $pid" TERM; wait $pid'
+            - locust
+          # Bez interfejsu WWW (--headless), więc pod nie słucha na żadnym porcie i nie ma sond HTTP.
+          # Liczbę użytkowników wyznacza LoadTestShape z locustfile.py; -u, -r i -t nie mają znaczenia.
+          # --only-summary: bez tabeli statystyk co 2 s w logach; ruch widać w metrykach frontendu.
+          args:
+            - --locustfile=/locust/locustfile.py
+            - --host=http://frontend.shop.svc:8080
+            - --headless
+            - --only-summary
+          env:
+            # Katalog z locustfile.py jest tylko do odczytu.
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+          resources:
+            # Zmierzone przy ok. 10 użytkownikach: ok. 60 MiB pamięci i 10m CPU.
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          volumeMounts:
+            - name: locustfile
+              mountPath: /locust
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: locustfile
+          configMap:
+            name: locustfile
+        - name: tmp
+          emptyDir:
+            sizeLimit: 16Mi

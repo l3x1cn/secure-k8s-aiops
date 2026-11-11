@@ -1,6 +1,6 @@
 # NetworkPolicy (T12) na działającym klastrze: dozwolone i odrzucane przepływy
 # (docs/architektura.md, sekcja „Przepływy sieciowe”; manifesty w deploy/base/networkpolicies).
-# Sondy uruchamia `kubectl exec` w podzie źródłowym: python w frontend, orders i fault-runner,
+# Sondy uruchamia `kubectl exec` w podzie źródłowym: python w frontend, orders, fault-runner i locust,
 # curl w intruder. Cilium porzuca odrzucony pakiet SYN bez odpowiedzi, więc odrzucenie to
 # przekroczenie czasu sondy (5 s); odmowa połączenia znaczy, że cel nie działa.
 # Uruchomienie: uv run --locked pytest tests/security/test_network_policies.py
@@ -25,6 +25,7 @@ HUBBLE_WAIT_SECONDS = 15
 FRONTEND = ("shop", "frontend")
 ORDERS = ("shop", "orders")
 FAULT_RUNNER = ("loadgen", "fault-runner")
+LOCUST = ("loadgen", "locust")
 INTRUDER = ("intruder", "intruder")
 DEFAULT_DENY_NAMESPACES = ["shop", "loadgen", "aiops"]
 
@@ -88,11 +89,20 @@ ALLOWED = [
         "200",
         id="fault-runner->frontend",
     ),
+    pytest.param(
+        LOCUST,
+        "GET",
+        f"{FRONTEND_URL}/healthz",
+        "",
+        "200",
+        id="locust->frontend",
+    ),
 ]
 INTERNET_SOURCES = [
     pytest.param(ORDERS, id="orders->internet"),
     pytest.param(FRONTEND, id="frontend->internet"),
     pytest.param(FAULT_RUNNER, id="fault-runner->internet"),
+    pytest.param(LOCUST, id="locust->internet"),
 ]
 
 
@@ -190,7 +200,7 @@ def cluster() -> None:
     result = kubectl("get", "--raw", "/readyz", check=False)
     if result.returncode != 0:
         pytest.fail(f"Klaster {KUBE_CONTEXT} niedostępny (make up): {result.stderr}")
-    for namespace, name in (FRONTEND, ORDERS, FAULT_RUNNER, INTRUDER):
+    for namespace, name in (FRONTEND, ORDERS, FAULT_RUNNER, LOCUST, INTRUDER):
         kubectl(
             "wait",
             "-n",
@@ -262,6 +272,11 @@ def test_intruder_to_orders_is_denied():
 
 def test_orders_to_frontend_is_denied():
     assert tcp_connect(ORDERS, "frontend.shop.svc", 8080) == "timeout"
+
+
+def test_locust_to_orders_is_denied():
+    # Locust dociera tylko do frontendu (T18); w loadgen do orders wolno tylko fault-runnerowi.
+    assert tcp_connect(LOCUST, "orders.shop.svc", 8080) == "timeout"
 
 
 @pytest.mark.usefixtures("internet")
