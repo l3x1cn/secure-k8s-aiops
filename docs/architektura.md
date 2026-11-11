@@ -40,14 +40,20 @@ Obrazy budowane w projekcie nazywają się `ghcr.io/l3x1cn/secure-k8s-aiops/<naz
 | fault-runner | `chaos/Dockerfile` | T08 |
 
 - Lokalnie `make images` buduje tag `:dev` i ładuje go do węzłów kind (overlay `local`).
-- CI, workflow Images (`.github/workflows/images.yml`, T10):
-  - PR: job `build` buduje każdy obraz bez publikacji tokenem tylko do odczytu. Zbiorczy job `images` jest wymaganą kontrolą rulesetu `main` i jest zielony tylko wtedy, gdy zbudowały się wszystkie obrazy;
-  - push na `main`: job `push`, jedyny z `packages: write`, publikuje tag `sha-<7 znaków SHA commita>`. Tagu `latest` nie ma;
+- CI, workflow Images (`.github/workflows/images.yml`, T10, T15):
+  - PR: job `build` buduje każdy obraz bez publikacji tokenem tylko do odczytu, ładuje go do Dockera runnera i skanuje bramką Trivy (niżej). Zbiorczy job `images` jest wymaganą kontrolą rulesetu `main` i jest zielony tylko wtedy, gdy wszystkie obrazy zbudowały się i przeszły bramkę;
+  - push na `main`: job `push`, jedyny z `packages: write`, buduje obraz, skanuje go tą samą bramką, a dopiero po zielonej bramce loguje się do GHCR i publikuje tag `sha-<7 znaków SHA commita>`. Tagu `latest` nie ma;
   - komplet obrazów commita istnieje, gdy wszystkie joby `push` jego przebiegu są zielone. Overlay `cloud` (T29) przypina `sha-<7 znaków>@sha256:<digest>` z przebiegu `main`, więc digest przechodzi review, jak digesty chartów Helm;
   - etykiety OCI nadaje `docker/metadata-action`, m.in. `org.opencontainers.image.source` (adres repozytorium) i `org.opencontainers.image.revision` (pełny SHA commita).
+- Bramka Trivy (T15): `scripts/trivy.sh` uruchamia Trivy 0.76.0 z `mise.toml` (bez `aquasecurity/trivy-action`). Obraz skanuje się z `--ignore-unfixed`, więc blokuje podatność HIGH albo CRITICAL z dostępną poprawką. Lokalnie: `bash scripts/trivy.sh image <nazwa> <obraz>`.
+  - Wyniki ze wszystkimi poziomami (JSON i SARIF) trafiają do artefaktu `trivy-image-<nazwa>` (`reports/trivy/`, retencja 90 dni, raport testów T31), także po czerwonej bramce.
+  - Job `sarif`, jedyny z `security-events: write`, wysyła SARIF do GitHub code scanning (kategoria `trivy-image-<nazwa>`). Nie uruchamia kodu z repozytorium i nie należy do rulesetu.
+  - Końcowy etap każdego Dockerfile'a robi `apt-get upgrade` (poprawki z `trixie-security`, których obraz bazowy jeszcze nie ma) i usuwa pip: runtime go nie potrzebuje, a pakiety dołączone do pip (`pip/_vendor`) mają podatności HIGH i CRITICAL. Wersje pakietów Debiana zależą więc od dnia budowy, a digest obrazu bazowego zostaje przypięty.
+  - Wyjątek wolno dodać tylko w `.trivyignore`: komentarz z uzasadnieniem nad wpisem i datą przeglądu `exp:RRRR-MM-DD`. `scripts/trivy.sh` przerywa skan, gdy wpis tego nie ma, a po tej dacie Trivy przestaje stosować wpis.
+- Manifesty: wymagany job `manifests` w `ci.yml` uruchamia też `make trivy-config` (`trivy config deploy/`, HIGH i CRITICAL blokują; ta sama reguła `.trivyignore`). Wynik trafia do artefaktu `trivy-config`, a job `sarif` w `ci.yml` wysyła go do code scanning (kategoria `trivy-config`).
 - Pakiety w GHCR są publiczne, więc obraz pobiera się bez logowania. Pierwsza publikacja nowego obrazu tworzy pakiet prywatny, a API GitHuba nie zmienia widoczności. Właściciel repozytorium przełącza więc pakiet ręcznie w UI (Package settings → Danger Zone → Change visibility → Public). Tej zmiany nie da się cofnąć.
 - Ryzyko szczątkowe R6 ([model zagrożeń](bezpieczenstwo.md#ryzyka-szczątkowe), T07): tag `sha-<7 znaków>` jest mutowalny i niepodpisany, a pakiet połączony z repozytorium dziedziczy jego uprawnienia. Publikację tylko z `main` wymusza więc wyłącznie workflow, nie rejestr: współpracownik z uprawnieniem zapisu albo skradziony PAT może nadpisać tag obrazem z backdoorem bez review. Atestacja provenance (BuildKit) nie jest podpisana i nikt jej nie weryfikuje przy wdrożeniu. Dlatego wdrożenie ma używać digestu, nie samego tagu; podpisaną atestację (`actions/attest-build-provenance` z weryfikacją `gh attestation verify`) rozważymy, gdy deploy z GHCR stanie się realny (T29).
-- Nowy obraz (np. anomaly-detector w T24) dopisuje się w pięciu miejscach: matrixy jobów `build` i `push` w `images.yml`, cel `images` w `Makefile`, lista `images:` (`newTag: dev`) w `deploy/overlays/local/kustomization.yaml` i tabela powyżej. Ruleset się nie zmienia.
+- Nowy obraz (np. anomaly-detector w T24) dopisuje się w pięciu miejscach: matrixy jobów `build`, `push` i `sarif` w `images.yml`, cel `images` w `Makefile`, lista `images:` (`newTag: dev`) w `deploy/overlays/local/kustomization.yaml` i tabela powyżej. Końcowy etap jego Dockerfile'a ma `apt-get upgrade` i usunięcie pip jak w `services/frontend/Dockerfile`, bo bez nich obraz nie przejdzie bramki. Ruleset się nie zmienia.
 
 ## Namespace'y i Pod Security
 
@@ -272,10 +278,11 @@ Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FA
 
 ```
 .
-├── .github/               # workflows/ci.yml: kontrole PR (T06); workflows/images.yml: obrazy i GHCR (T10); dependabot.yml (T06)
+├── .github/               # workflows/ci.yml: kontrole PR (T06), bramka Trivy dla deploy/ i job sarif (T15); workflows/images.yml: obrazy i GHCR (T10), bramka Trivy i job sarif (T15); dependabot.yml (T06)
 ├── .pre-commit-config.yaml # hook gitleaks przed commitem (T14)
+├── .trivyignore           # wyjątki bramki Trivy: uzasadnienie i data przeglądu (T15)
 ├── mise.toml              # wersje narzędzi (T02)
-├── Makefile               # doctor (T02); cluster, hubble-ui, hubble-relay (T03); up, down, namespaces, secrets, images, deploy, status, urls, prometheus, alertmanager (T04); lint, unit, gitleaks, manifests (T06); observability (T16); grafana-password (T14); test, report (dalej)
+├── Makefile               # doctor (T02); cluster, hubble-ui, hubble-relay (T03); up, down, namespaces, secrets, images, deploy, status, urls, prometheus, alertmanager (T04); lint, unit, gitleaks, manifests (T06); trivy-config (T15); observability (T16); grafana-password (T14); test, report (dalej)
 ├── pyproject.toml         # uv workspace, Python 3.13 (T02)
 ├── platform/              # kind, Cilium, versions.env (T03, T04)
 ├── deploy/
@@ -291,7 +298,7 @@ Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FA
 ├── aiops/                 # pakiet aiops: cechy, model, detektor, ewaluacja (T20–T25, T30)
 ├── chaos/                 # fault-runner i run.py (T08, T21)
 ├── tests/                 # security/, observability/, e2e/ (T11–T14, T16, T18, T26, T27)
-├── scripts/               # doctor.sh (T02), secrets.sh (T04, T14, T16), manifests.sh (T06) i skrypty pomocnicze
+├── scripts/               # doctor.sh (T02), secrets.sh (T04, T14, T16), manifests.sh (T06), trivy.sh (T15) i skrypty pomocnicze
 ├── infra/                 # OpenTofu, rozszerzenie (T33)
 ├── reports/               # wyniki testów i przebiegów, poza git (T26–T31)
 └── docs/                  # karta, architektura, bezpieczeństwo, detekcja, runbook, demo
