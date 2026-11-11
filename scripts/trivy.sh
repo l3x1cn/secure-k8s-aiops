@@ -19,7 +19,7 @@ cd "$(dirname "$0")/.."
 
 # Trivy i yq w wersjach z mise.toml mają pierwszeństwo przed systemowymi, także bez make i bez aktywacji mise
 # w powłoce (jak PATH w Makefile).
-PATH="$(mise bin-paths 2>/dev/null | tr '\n' ':')$PATH"
+PATH="$(mise bin-paths 2>/dev/null | tr '\n' ':' || true)$PATH"
 
 out=reports/trivy
 

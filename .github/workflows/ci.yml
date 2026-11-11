@@ -85,11 +85,13 @@ jobs:
         if: ${{ !cancelled() }}
         run: make trivy-config
       # Także po czerwonej bramce: wyniki trafiają do raportu testów (T31) i do joba sarif.
+      # overwrite: ponowne uruchomienie nieudanego joba (Re-run failed jobs) nie może kończyć się 409 przez artefakt z poprzedniej próby.
       - if: ${{ !cancelled() && steps.trivy.outcome != 'skipped' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: trivy-config
           path: reports/trivy/
+          overwrite: true
 
   # Wynik bramki Trivy z joba manifests do GitHub code scanning (zakładka Security; w PR także adnotacje
   # i kontrola „Code scanning results”). Bez artefaktu (skan się nie odbył) upload jest pomijany.

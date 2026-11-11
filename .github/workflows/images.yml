@@ -84,11 +84,13 @@ jobs:
           IMAGE_REF: ${{ steps.meta.outputs.tags }}
         run: bash scripts/trivy.sh image "$IMAGE" "$IMAGE_REF"
       # Także po czerwonej bramce: wyniki trafiają do raportu testów i do joba sarif.
+      # overwrite: ponowne uruchomienie nieudanego joba (Re-run failed jobs) nie może kończyć się 409 przez artefakt z poprzedniej próby.
       - if: ${{ !cancelled() && steps.trivy.outcome != 'skipped' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: trivy-image-${{ matrix.image }}
           path: reports/trivy/
+          overwrite: true
 
   # Wymagana kontrola rulesetu main: jeden kontekst niezależny od listy obrazów w matrixie.
   # always() zamiast !cancelled(): po anulowaniu przebiegu job ma się wykonać i zawieść (pominięta wymagana kontrola liczy się jako zaliczona).
@@ -164,6 +166,7 @@ jobs:
         with:
           name: trivy-image-${{ matrix.image }}
           path: reports/trivy/
+          overwrite: true
       # Logowanie dopiero po zielonej bramce: dane logowania do GHCR (~/.docker/config.json) nie istnieją, gdy działa Trivy.
       - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
