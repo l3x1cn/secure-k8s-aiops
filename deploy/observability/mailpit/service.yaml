@@ -1,0 +1,35 @@
+# SMTP mailpit.monitoring.svc:1025 dla Alertmanagera (wartości chartu, T19) i API/UI na 8025 w klastrze.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailpit
+  labels:
+    app.kubernetes.io/name: mailpit
+    app.kubernetes.io/part-of: secure-k8s-aiops
+spec:
+  selector:
+    app.kubernetes.io/name: mailpit
+  ports:
+    - name: smtp
+      port: 1025
+      targetPort: smtp
+    - name: http
+      port: 8025
+      targetPort: http
+---
+# Sam UI: overlay local zmienia ją na NodePort 30825 (localhost:8025, extraPortMappings w platform/kind/cluster.yaml).
+# Osobna usługa, żeby NodePort nie wystawiał też SMTP bez uwierzytelnienia.
+apiVersion: v1
+kind: Service
+metadata:
+  name: mailpit-ui
+  labels:
+    app.kubernetes.io/name: mailpit
+    app.kubernetes.io/part-of: secure-k8s-aiops
+spec:
+  selector:
+    app.kubernetes.io/name: mailpit
+  ports:
+    - name: http
+      port: 8025
+      targetPort: http

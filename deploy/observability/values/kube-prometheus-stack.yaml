@@ -37,6 +37,28 @@ prometheus:
         memory: 2Gi
 
 alertmanager:
+  # Routing (T19, docs/architektura.md „Alerty”): każdy alert idzie e-mailem do Mailpit, w grupach po alertname i service.
+  # Watchdog (stale aktywny, sprawdza ścieżkę alertów) i InfoInhibitor (służy tylko do wyciszania alertów info)
+  # z reguł chartu idą do odbiorcy null. Helm scala tę mapę z domyślną konfiguracją chartu: global i inhibit_rules
+  # zostają z chartu, a listy (group_by, routes, receivers) zastępują domyślne.
+  config:
+    route:
+      receiver: mailpit
+      group_by: [alertname, service]
+      group_wait: 30s
+      repeat_interval: 4h
+      routes:
+        - receiver: "null"
+          matchers:
+            - alertname =~ "Watchdog|InfoInhibitor"
+    receivers:
+      - name: "null"
+      - name: mailpit
+        email_configs:
+          - to: zespol@platforma.local
+            from: alertmanager@platforma.local
+            smarthost: mailpit.monitoring.svc:1025
+            require_tls: false
   alertmanagerSpec:
     resources:
       requests:

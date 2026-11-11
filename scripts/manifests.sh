@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# Walidacja manifestów (T06): `kustomize build` każdego overlayu z deploy/overlays → `kubeconform -strict`.
+# Walidacja manifestów (T06): `kustomize build` każdego overlayu z deploy/overlays → `kubeconform -strict`,
+# a spec każdego PrometheusRule z tego wyniku → `promtool check rules` (T19; yq wycina spec do osobnego pliku).
 # Uruchamiaj przez `make manifests` (to samo robi job manifests w CI). Sprawdza wszystkie overlaye, czyli katalogi
 # z kustomization.yaml (nowy overlay, np. cloud z T29, wchodzi automatycznie), i kończy się kodem 1, gdy któryś
-# się nie buduje albo ma zasób niezgodny ze schematem. Zgodny z bash 3.2 (macOS).
+# się nie buduje, ma zasób niezgodny ze schematem, nie ma żadnego PrometheusRule albo któraś reguła nie przechodzi
+# promtool. Zgodny z bash 3.2 (macOS).
 # Schematy: Kubernetes w wersji węzłów kind (KIND_NODE_IMAGE z platform/versions.env) z yannh/kubernetes-json-schema
 # i CRD z datreeio/CRDs-catalog; obie lokalizacje przypięte po commicie, więc wynik nie zależy od zmian upstreamu.
 # Zasób bez schematu to błąd: kubeconform działa bez -ignore-missing-schemas.
@@ -30,6 +32,32 @@ case $k8s_version in
     ;;
 esac
 
+rules_dir=$(mktemp -d)
+trap 'rm -rf "$rules_dir"' EXIT
+
+# Reguły z PrometheusRule w wyniku kustomize build ($1: overlay): promtool czyta plik z kluczem groups,
+# czyli spec obiektu. Kod 1, gdy któraś reguła jest błędna albo overlay nie ma żadnej.
+# set -e nie działa w funkcji wołanej w warunku (`elif ! check_rules`), stąd jawne `|| return 1`.
+check_rules() {
+  local overlay=$1 rule count=0
+  rm -rf "${rules_dir:?}"/*
+  kustomize build "$overlay" \
+    | yq 'select(.kind == "PrometheusRule")' --split-exp "\"$rules_dir/\" + .metadata.namespace + \"-\" + .metadata.name" \
+    || { echo "kustomize build | yq: błąd dla $overlay" >&2; return 1; }
+  for rule in "$rules_dir"/*.yml; do
+    [ -f "$rule" ] || continue
+    count=$((count + 1))
+    # -e: kod błędu, gdy spec jest puste (promtool przyjąłby pusty plik jako 0 reguł).
+    yq -e '.spec' "$rule" >"${rule%.yml}.rules.yaml" || return 1
+    echo "promtool: $(basename "${rule%.yml}")"
+    promtool check rules "${rule%.yml}.rules.yaml" || return 1
+  done
+  if [ "$count" -eq 0 ]; then
+    echo "Brak PrometheusRule w $overlay." >&2
+    return 1
+  fi
+}
+
 total=0
 failed=0
 for kustomization in deploy/overlays/*/kustomization.yaml; do
@@ -44,6 +72,9 @@ for kustomization in deploy/overlays/*/kustomization.yaml; do
     -schema-location "$crds_location" \
     -; then
     echo "BŁĄD: $overlay" >&2
+    failed=$((failed + 1))
+  elif ! check_rules "$overlay"; then
+    echo "BŁĄD (reguły Prometheusa): $overlay" >&2
     failed=$((failed + 1))
   fi
 done

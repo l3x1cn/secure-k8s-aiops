@@ -69,6 +69,7 @@ trivy trivy
 gitleaks gitleaks
 kubeconform kubeconform
 promtool promtool
+yq yq
 opentofu tofu
 EOF
 fi

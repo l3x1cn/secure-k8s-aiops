@@ -19,7 +19,7 @@ KUBE_PROMETHEUS_STACK_CHART := oci://ghcr.io/prometheus-community/charts/kube-pr
 # CI (.github/workflows/images.yml, T10) publikuje je w GHCR z tagiem sha-<7 znaków SHA commita>; IMAGE_REPO jest też w env tego workflow i jako OWN_IMAGE_REPO w tests/security/test_pod_security.py: zmieniaj razem.
 IMAGE_REPO := ghcr.io/l3x1cn/secure-k8s-aiops
 # Namespace'y z Deploymentami aplikacji (etykieta app.kubernetes.io/part-of=secure-k8s-aiops), na które czeka deploy.
-APP_NAMESPACES := shop loadgen aiops intruder
+APP_NAMESPACES := shop loadgen aiops intruder monitoring
 
 .PHONY: doctor lint unit gitleaks manifests up down cluster namespaces secrets observability images deploy status urls grafana-password hubble-ui hubble-relay prometheus alertmanager
 
@@ -45,7 +45,8 @@ unit:
 gitleaks:
 	gitleaks git --no-banner --redact --verbose --log-opts="--diff-merges=first-parent HEAD" .
 
-# Manifesty (job manifests): kustomize build każdego overlayu z deploy/overlays → kubeconform -strict (scripts/manifests.sh).
+# Manifesty (job manifests): kustomize build każdego overlayu z deploy/overlays → kubeconform -strict, a spec każdego
+# PrometheusRule → promtool check rules (scripts/manifests.sh).
 manifests:
 	@bash scripts/manifests.sh
 
@@ -98,7 +99,7 @@ secrets: namespaces
 # kube-prometheus-stack w monitoring (T16): Prometheus, Alertmanager, Grafana (NodePort 30300), kube-state-metrics, node-exporter.
 # Wersja i digest z platform/versions.env, wartości w deploy/observability/values/; CRD instaluje make cluster.
 # Grafana czyta hasło admina z Secretu grafana-admin, więc sekrety muszą istnieć przed instalacją.
-# ServiceMonitory aplikacji i reguły nagrywające stosuje make deploy (deploy/base, deploy/observability).
+# ServiceMonitory aplikacji, reguły nagrywające i alertów oraz Mailpit stosuje make deploy (deploy/base, deploy/observability).
 observability: secrets
 	helm upgrade --install kube-prometheus-stack $(KUBE_PROMETHEUS_STACK_CHART)@$(KUBE_PROMETHEUS_STACK_CHART_DIGEST) \
 		--version $(KUBE_PROMETHEUS_STACK_VERSION) \
