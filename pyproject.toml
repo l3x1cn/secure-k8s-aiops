@@ -42,8 +42,12 @@ dev = [
 testpaths = ["chaos", "libs", "services"]
 # Usługi mają osobne katalogi tests/ z plikami o tych samych nazwach.
 addopts = ["--import-mode=importlib"]
-# Testy bezpieczeństwa na klastrze (tests/security, T11–T14); wybiera je `-m security` (make test-security, T26).
-markers = ["security: test bezpieczeństwa na działającym klastrze (tests/security)"]
+# Testy na klastrze: bezpieczeństwa (tests/security, T11–T14; `-m security`, make test-security w T26)
+# i obserwowalności (tests/observability, T16, T27; `-m observability`).
+markers = [
+    "security: test bezpieczeństwa na działającym klastrze (tests/security)",
+    "observability: test metryk, logów i alertów na działającym klastrze (tests/observability)",
+]
 
 [tool.ruff]
 # `make lint` i job lint w CI (T06); ruff w wersji z mise.toml. Sprawdza też notebooki (aiops/notebooks)

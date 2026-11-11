@@ -172,7 +172,8 @@ W kube-system NetworkPolicy `hubble-relay-ui-ingress` (T03, `platform/cilium/hub
 
 - **Aplikacje.** `http_requests_total{method,route,status}`, histogram `http_request_duration_seconds{method,route}` (kubełki z granicą 0.3 s, progiem HighLatency) i domyślne metryki procesu z `prometheus_client`. `route` to szablon trasy (`/orders/{order_id}`), dla nieznanych ścieżek `unmatched`. `method` to `GET`, `HEAD`, `POST`, `PUT`, `PATCH`, `DELETE`, `OPTIONS`, a każda inna metoda to `OTHER`. Żądania `/healthz` i `/metrics` nie trafiają do metryk ani logów żądań. ServiceMonitor nadaje etykiety `namespace` i `service`. Implementacja: pakiet `libs/observability` (T05).
 - **Logi.** Jedna linia JSON na zdarzenie na stdout, pola: `ts`, `level` (`DEBUG`, `INFO`, `WARNING`, `ERROR`), `service`, `route`, `status`, `duration_ms`, `msg`. Pola spoza żądania (`route`, `status`, `duration_ms`) mają wartość `null`; wyjątek dodaje pole `exc` ze śladem stosu. Żądania z odpowiedzią 4xx mają `level` = `WARNING`, 5xx = `ERROR`.
-- **Reguły nagrywające (T16).** Etykieta `service` ∈ {frontend, orders}, krok 30 s. To jedyne wejście dla alertów regułowych i cech ML:
+- **Zbieranie (T16).** kube-prometheus-stack w monitoring (`make observability`, krok `make up`; wartości w `deploy/observability/values/kube-prometheus-stack.yaml`). Prometheus zbiera wszystkie ServiceMonitory, PodMonitory i PrometheusRule w klastrze (bez selektora release'u), także Cilium i Hubble z kube-system. Scrape co 15 s, retencja 3 dni (najwyżej 4 GB) na PVC 5 Gi, więc dane przeżywają restart poda. W kind kube-controller-manager, kube-scheduler, etcd i kube-proxy wystawiają metryki tylko na `127.0.0.1` węzła, więc chart ich nie monitoruje (bez celów stale `down` i fałszywych alertów). ServiceMonitory `frontend` i `orders` leżą obok Service (`deploy/base/<usługa>/servicemonitor.yaml`).
+- **Reguły nagrywające (T16).** PrometheusRule `recording-rules` (`deploy/observability/recording-rules.yaml`), etykiety `namespace="shop"` i `service` ∈ {frontend, orders}, krok 30 s. To jedyne wejście dla alertów regułowych i cech ML. `service` dla metryk kontenera to nazwa kontenera aplikacji, dla sieci poda złączenie z `kube_pod_container_info`, dla Hubble `source_workload`/`destination_workload`. Reguły `http_*` mają serie od pierwszego obsłużonego żądania; bez ruchu `http_errors_ratio` i `http_latency_p95_seconds` mają wartość NaN. `policy_drops` bez odrzuceń ma 0. Nowe odrzucenie tworzy serię `hubble_drop_total` od wartości z pierwszego scrape'u, więc `rate` liczy dopiero kolejne odrzucenia:
 
 | Reguła | Znaczenie |
 |---|---|
@@ -185,6 +186,8 @@ W kube-system NetworkPolicy `hubble-relay-ui-ingress` (T03, `platform/cilium/hub
 | `service:http_latency_p95_seconds:1m` | p95 czasu odpowiedzi |
 | `service:restarts:increase5m` | przyrost restartów kontenera w 5 min |
 | `service:policy_drops:rate1m` | odrzucenia `POLICY_DENIED`, w których usługa jest celem lub źródłem (Hubble) |
+
+Test: `tests/observability/test_metrics.py` (marker `observability`); na działającym klastrze `uv run --locked pytest tests/observability/test_metrics.py`. Sprawdza `up` = 1 dla frontend i orders, obecność `hubble_flows_processed_total` i skończoną wartość każdej reguły z tabeli dla obu usług przy ruchu z `fault-runner spike`.
 
 - **Detektor (T24).**
 
@@ -213,7 +216,7 @@ Odbiorca: Alertmanager → Mailpit (SMTP `mailpit.monitoring.svc:1025`).
 
 ## Sekrety
 
-Sekrety tworzy `make secrets` (`scripts/secrets.sh`, krok `make up`): tylko brakujące, z `openssl rand -hex 32`, bez zapisu wartości na dysk i bez wypisywania; nigdy nie trafiają do git. `orders-api-token` i `fault-token` (ta sama wartość w shop i loadgen) skrypt tworzy od T04, `grafana-admin` dochodzi w T14.
+Sekrety tworzy `make secrets` (`scripts/secrets.sh`, krok `make up`): tylko brakujące, z `openssl rand -hex 32`, bez zapisu wartości na dysk i bez wypisywania; nigdy nie trafiają do git. `orders-api-token` i `fault-token` (ta sama wartość w shop i loadgen) skrypt tworzy od T04, `grafana-admin` (użytkownik `admin`, losowe hasło) od T16, bo bez niego Grafana nie wstaje. `make grafana-password` i testy sekretów dochodzą w T14.
 
 | Secret | Namespace | Klucze | Użycie |
 |---|---|---|---|
@@ -248,14 +251,14 @@ Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FA
 .
 ├── .github/               # workflows/ci.yml: kontrole PR (T06); workflows/images.yml: obrazy i GHCR (T10); dependabot.yml (T06)
 ├── mise.toml              # wersje narzędzi (T02)
-├── Makefile               # doctor (T02); cluster, hubble-ui, hubble-relay (T03); up, down, namespaces, secrets, images, deploy, status, urls, prometheus, alertmanager (T04); lint, unit, gitleaks, manifests (T06); test, report (dalej)
+├── Makefile               # doctor (T02); cluster, hubble-ui, hubble-relay (T03); up, down, namespaces, secrets, images, deploy, status, urls, prometheus, alertmanager (T04); lint, unit, gitleaks, manifests (T06); observability (T16); test, report (dalej)
 ├── pyproject.toml         # uv workspace, Python 3.13 (T02)
 ├── platform/              # kind, Cilium, versions.env (T03, T04)
 ├── deploy/
 │   ├── base/              # namespace'y, aplikacje, RBAC, NetworkPolicy (T04, T11–T13)
 │   ├── overlays/local/    # kind (T04)
 │   ├── overlays/cloud/    # zarządzany Kubernetes (T29)
-│   └── observability/     # values chartów, reguły, dashboardy (T16–T19, T22)
+│   └── observability/     # values/ chartów Helm, reguły, dashboardy (T16–T19, T22); zasoby dołącza deploy/base
 ├── libs/
 │   └── observability/     # wspólny kontrakt metryk i logów JSON dla usług (T05)
 ├── services/              # obrazy budowane z korzenia: docker build -f services/<nazwa>/Dockerfile .
@@ -263,8 +266,8 @@ Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FA
 │   └── orders/            # (T05, T08)
 ├── aiops/                 # pakiet aiops: cechy, model, detektor, ewaluacja (T20–T25, T30)
 ├── chaos/                 # fault-runner i run.py (T08, T21)
-├── tests/                 # security/, observability/, e2e/ (T11–T14, T26, T27)
-├── scripts/               # doctor.sh (T02), secrets.sh (T04, T14), manifests.sh (T06) i skrypty pomocnicze
+├── tests/                 # security/, observability/, e2e/ (T11–T14, T16, T26, T27)
+├── scripts/               # doctor.sh (T02), secrets.sh (T04, T14, T16), manifests.sh (T06) i skrypty pomocnicze
 ├── infra/                 # OpenTofu, rozszerzenie (T33)
 ├── reports/               # wyniki testów i przebiegów, poza git (T26–T31)
 └── docs/                  # karta, architektura, bezpieczeństwo, detekcja, runbook, demo

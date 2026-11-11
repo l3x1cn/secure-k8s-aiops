@@ -35,21 +35,28 @@ uv sync        # Python 3.13 i zależności w .venv
 ## Klaster lokalny
 
 ```bash
-make up      # cała platforma: kind z Cilium i Hubble, namespace'y, sekrety, obrazy :dev, aplikacje
+make up      # cała platforma: kind z Cilium i Hubble, namespace'y, sekrety, Prometheus i Grafana, obrazy :dev, aplikacje
 make status  # węzły, release'y Helm i pody
 make urls    # adresy usług na hoście
 make down    # usuwa klaster razem ze wszystkim, co w nim działa
 ```
 
-`make up` od zera trwa ok. 3 min (maszyna R1: 12 CPU, 31 GB RAM, obrazy bazowe w cache Dockera). Ponowne `make up` na działającym klastrze niczego nie zmienia. Klaster kind `secure-k8s-aiops` ma kontekst kubectl `kind-secure-k8s-aiops`. Porty 8080, 3000 i 8025 na `127.0.0.1` muszą być wolne. Frontend: http://localhost:8080.
+`make up` od zera trwa ok. 4 min (maszyna R3: 4 CPU, 7 GB RAM, obrazy bazowe w cache Dockera, obrazy kube-prometheus-stack pobierane do węzłów; przed T16 na maszynie R1 ok. 3 min). Ponowne `make up` na działającym klastrze niczego nie zmienia. Klaster kind `secure-k8s-aiops` ma kontekst kubectl `kind-secure-k8s-aiops`. Porty 8080, 3000 i 8025 na `127.0.0.1` muszą być wolne. Frontend: http://localhost:8080.
 
 Kroki `make up` w tej kolejności; każdy działa też osobno:
 
 ```bash
-make cluster  # kind (control-plane + 2 workery) z Cilium i Hubble
-make secrets  # namespace'y i brakujące sekrety; wartości nie trafiają na dysk ani na ekran
-make images   # obrazy :dev frontend, orders i fault-runner, załadowane do kind
-make deploy   # overlay deploy/overlays/local; czeka na gotowość Deploymentów
+make cluster        # kind (control-plane + 2 workery) z Cilium i Hubble
+make secrets        # namespace'y i brakujące sekrety; wartości nie trafiają na dysk ani na ekran
+make observability  # kube-prometheus-stack w monitoring (najpierw make secrets): Prometheus, Alertmanager, Grafana
+make images         # obrazy :dev frontend, orders i fault-runner, załadowane do kind
+make deploy         # overlay deploy/overlays/local (z ServiceMonitorami i regułami); czeka na gotowość Deploymentów
+```
+
+Grafana: http://localhost:3000, użytkownik `admin`, hasło z sekretu (`make grafana-password` dojdzie w T14):
+
+```bash
+kubectl -n monitoring get secret grafana-admin -o jsonpath='{.data.admin-password}' | base64 -d; echo
 ```
 
 Tag `:dev` się nie zmienia, więc po zmianie kodu usługi: `make images`, potem `kubectl -n <namespace> rollout restart deployment/<nazwa>`.
@@ -63,10 +70,11 @@ make prometheus    # Prometheus (od T16): http://localhost:9090
 make alertmanager  # Alertmanager (od T16): http://localhost:9093
 ```
 
-Testy bezpieczeństwa na działającym klastrze (kubectl i hubble z mise w PATH; `make test-security` dojdzie w T26):
+Testy na działającym klastrze (kubectl i hubble z mise w PATH; `make test-security` dojdzie w T26, `make test` w T27):
 
 ```bash
-uv run --locked pytest tests/security  # RBAC (T11), NetworkPolicy (T12), Pod Security (T13): konta usług, role zespołu, przepływy, odrzucenie poda uprzywilejowanego, securityContext podów
+uv run --locked pytest tests/security       # RBAC (T11), NetworkPolicy (T12), Pod Security (T13): konta usług, role zespołu, przepływy, odrzucenie poda uprzywilejowanego, securityContext podów
+uv run --locked pytest tests/observability  # metryki (T16): cele aplikacji, Hubble, reguły service:* (ok. 1 min, ruch z fault-runner spike)
 ```
 
 ## Usługi

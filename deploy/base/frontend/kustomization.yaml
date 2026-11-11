@@ -4,3 +4,4 @@ namespace: shop
 resources:
   - deployment.yaml
   - service.yaml
+  - servicemonitor.yaml
