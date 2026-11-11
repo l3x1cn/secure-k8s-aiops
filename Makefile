@@ -1,3 +1,8 @@
+# Bez „Entering/Leaving directory” także przy make -C i w sub-make: cele, które wypisują wartość
+# (make grafana-password), dają na stdout samą wartość i nadają się do podstawienia w powłoce.
+# Musi stać przed pierwszym $(shell): po nim GNU make 4.4 ignoruje tę flagę przy make -C.
+MAKEFLAGS += --no-print-directory
+
 # Narzędzia w wersjach z mise.toml mają pierwszeństwo przed systemowymi,
 # także gdy mise nie jest aktywowane w powłoce.
 export PATH := $(shell mise bin-paths 2>/dev/null | tr '\n' ':')$(PATH)

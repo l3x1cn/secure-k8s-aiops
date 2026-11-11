@@ -2,8 +2,9 @@
 # a gitleaks nie znajduje sekretów w historii HEAD. Sekrety tworzy przy wdrożeniu
 # `make secrets` (scripts/secrets.sh; docs/architektura.md, sekcja „Sekrety”).
 # Test nie potrzebuje klastra. Sprawdza każdy plik YAML w deploy/ (także taki,
-# którego nie dołącza żaden kustomization) i wynik `kustomize build` każdego
-# overlayu z deploy/overlays (Secret z secretGenerator). Historię skanuje
+# którego nie dołącza żaden kustomization; listy `*List`, także `SecretList`,
+# element po elemencie) i wynik `kustomize build` każdego overlayu z
+# deploy/overlays (Secret z secretGenerator). Historię skanuje
 # `make gitleaks`, jak wymagany job CI `secrets`: tylko HEAD, bo inne gałęzie
 # (np. origin/t06-test-sekret) celowo mają fałszywy klucz.
 # Uruchomienie: uv run --locked pytest tests/security/test_secrets.py
@@ -21,14 +22,24 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEPLOY = REPO_ROOT / "deploy"
 
 
-def secrets_with_values(document: object) -> list[str]:
-    """Secrety z niepustym data albo stringData; w kind: List także elementy."""
+def secrets_with_values(document: object, item_kind: str | None = None) -> list[str]:
+    """Secrety z niepustym data albo stringData; w każdym *List także elementy.
+
+    Jak kubectl (apimachinery): element listy bez kind i bez apiVersion dostaje
+    rodzaj listy bez przyrostka List (SecretList -> Secret).
+    """
     if not isinstance(document, dict):
         return []
-    if document.get("kind") == "List":
+    kind = document.get("kind")
+    if kind is None and "apiVersion" not in document:
+        kind = item_kind
+    if isinstance(kind, str) and kind.endswith("List") and "items" in document:
+        inherited = kind.removesuffix("List") or None
         items = document.get("items") or []
-        return [found for item in items for found in secrets_with_values(item)]
-    if document.get("kind") != "Secret":
+        return [
+            found for item in items for found in secrets_with_values(item, inherited)
+        ]
+    if kind != "Secret":
         return []
     if not (document.get("data") or document.get("stringData")):
         return []
