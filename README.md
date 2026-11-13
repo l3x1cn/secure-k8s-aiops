@@ -127,6 +127,6 @@ curl -s 'localhost:8025/api/v1/search?query=subject:HighErrorRate'   # e-maile p
 
 - Każde zadanie to issue `Txx`. Gałąź `txx-krotki-opis`, PR z `Closes #N`.
 - PR wymaga zielonego CI i jednej recenzji (od T06).
-- Przed PR: `make lint unit gitleaks manifests` (te same kontrole co CI).
+- Przed PR: `make lint unit gitleaks manifests trivy-config` (te same kontrole co CI).
 - Obrazy: PR je buduje (wymagana kontrola `images`), a push na `main` publikuje `ghcr.io/l3x1cn/secure-k8s-aiops/<nazwa>:sha-<7 znaków SHA commita>` ([docs/architektura.md](docs/architektura.md#obrazy)).
 - Wspólne kontrakty (porty, nazwy metryk, alerty, sekrety, scenariusze) zmieniamy tylko PR-em do `docs/architektura.md`.
