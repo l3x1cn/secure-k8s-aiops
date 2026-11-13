@@ -3,7 +3,7 @@
 # trafiają do reports/trivy/: <cel>.json (raport testów, T31) i <cel>.sarif (GitHub code scanning, job sarif w CI).
 # Bramka to `--severity HIGH,CRITICAL --exit-code 1` na wyniku skanu (`trivy convert`), a obraz skanuje się
 # z `--ignore-unfixed`, więc blokują tylko podatności z dostępną poprawką. Log pokazuje tabelę tego, co blokuje.
-# Kod 1: znalezisko HIGH albo CRITICAL, błąd skanu albo .trivyignore niezgodny z regułą poniżej; kod 2: złe argumenty.
+# Kod 1: znalezisko HIGH albo CRITICAL, błąd skanu, .trivyignore niezgodny z regułą poniżej albo komentarz trivy:ignore w deploy/; kod 2: złe argumenty.
 # Użycie:
 #   make trivy-config                             # = scripts/trivy.sh config; job manifests w ci.yml
 #   bash scripts/trivy.sh image <nazwa> <obraz>   # obraz z lokalnego Dockera (--image-src docker); joby build
@@ -12,6 +12,7 @@
 # .trivyignore (korzeń repozytorium; Trivy czyta go z bieżącego katalogu): każdy wpis stoi w grupie pod komentarzem
 # z uzasadnieniem (bez pustej linii między komentarzem a wpisami) i kończy się datą przeglądu exp:RRRR-MM-DD.
 # Po tej dacie Trivy przestaje stosować wpis, więc bramka znów zgłasza znalezisko.
+# Trivy nie czyta trivy.yaml ani (skan obrazu) trivy-secret.yaml (--config '', --secret-config ''), a brak .trivyignore kończy skan błędem.
 # Zgodny z bash 3.2 (macOS).
 set -euo pipefail
 
@@ -69,6 +70,15 @@ if ! check_ignorefile; then
   exit 1
 fi
 
+# Jedyny kanał wyjątków to .trivyignore: komentarz trivy:ignore w deploy/ omijałby jego regułę.
+if [ "$1" = config ] && grep -rn 'trivy:ignore' deploy/ >&2; then
+  echo "Wyjątek tylko w .trivyignore: usuń komentarze trivy:ignore z deploy/ (lista wyżej)." >&2
+  exit 1
+fi
+
+# Bez trivy.yaml z bieżącego katalogu (severity, skip-dirs, ignorefile osłabiałyby bramkę) i tylko .trivyignore, który sprawdza check_ignorefile.
+trivy_opts=(--config '' --ignorefile .trivyignore)
+
 mkdir -p "$out"
 json=$out/$name.json
 sarif=$out/$name.sarif
@@ -78,19 +88,19 @@ rm -f "$json" "$sarif"
 # Skan bez filtra poziomów i bez --exit-code: każdy kod różny od 0 to błąd Trivy (set -e kończy skrypt).
 # --skip-version-check: bez zapytania o nowszą wersję (wersję wyznacza mise.toml).
 if [ "$1" = config ]; then
-  trivy config --skip-version-check --format json --output "$json" "$target"
+  trivy config "${trivy_opts[@]}" --skip-version-check --format json --output "$json" "$target"
 else
-  trivy image --skip-version-check --image-src docker --no-progress --ignore-unfixed --format json --output "$json" "$target"
+  trivy image "${trivy_opts[@]}" --secret-config '' --skip-version-check --image-src docker --no-progress --ignore-unfixed --format json --output "$json" "$target"
 fi
 
-trivy convert --quiet --format sarif --output "$sarif" "$json"
+trivy convert "${trivy_opts[@]}" --quiet --format sarif --output "$sarif" "$json"
 if [ "$1" = config ]; then
   # Trivy podaje ścieżki względem deploy/ z uriBaseId, a code scanning czyta uri względem korzenia repozytorium
   # i pomija uriBaseId (github/codeql-action#2215): bez prefiksu alert wskazuje nieistniejący plik.
   yq -i -p json -o json '(.runs[].results[].locations[].physicalLocation.artifactLocation.uri) |= "deploy/" + . | del(.runs[].originalUriBaseIds) | del(.runs[].results[].locations[].physicalLocation.artifactLocation.uriBaseId)' "$sarif"
 fi
 
-if ! trivy convert --quiet --scanners "$scanners" --severity HIGH,CRITICAL --exit-code 1 --format table "$json"; then
+if ! trivy convert "${trivy_opts[@]}" --quiet --scanners "$scanners" --severity HIGH,CRITICAL --exit-code 1 --format table "$json"; then
   echo "BŁĄD: bramka Trivy: znaleziska HIGH albo CRITICAL w $target (tabela wyżej). Wyniki: $json, $sarif." >&2
   exit 1
 fi

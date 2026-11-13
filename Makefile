@@ -52,7 +52,7 @@ manifests:
 
 # Bramka Trivy dla manifestów (T15, drugi krok joba manifests): trivy config deploy/ przez scripts/trivy.sh; wyniki ze
 # wszystkimi poziomami w reports/trivy/config.json i config.sarif. Kod 1 przy znalezisku HIGH albo CRITICAL
-# albo przy wpisie .trivyignore bez uzasadnienia i daty przeglądu. Obrazy skanuje workflow Images
+# albo przy wpisie .trivyignore bez uzasadnienia i daty przeglądu albo przy komentarzu trivy:ignore w deploy/. Obrazy skanuje workflow Images
 # (lokalnie: bash scripts/trivy.sh image <nazwa> <obraz>).
 trivy-config:
 	@bash scripts/trivy.sh config

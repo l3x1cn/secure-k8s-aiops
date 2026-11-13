@@ -173,8 +173,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # Ten sam builder, kontekst i Dockerfile co przy skanie: warstwy pochodzą z cache buildera, więc publikowany
-      # obraz ma te same warstwy co obraz po skanie (krok apt-get upgrade nie wykonuje się ponownie).
+      # Publikacja to druga budowa (push: true) tym samym builderem, z tym samym kontekstem i Dockerfile'em co
+      # obraz po skanie: warstwy zwykle pochodzą z cache buildera, więc krok apt-get upgrade nie wykonuje się
+      # ponownie. Nic tego nie wymusza: przy chybieniu cache (np. GC BuildKit albo inny frontend z
+      # # syntax=docker/dockerfile:1) opublikowany obraz mógłby mieć pakiety Debiana, których bramka nie widziała,
+      # a manifest i atestacja provenance i tak różnią się od obrazu po skanie. Świadoma decyzja T15 (wzorzec
+      # Docker-a „test before push”, provenance domyślne z T10).
       - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
