@@ -60,6 +60,10 @@ DEVELOPER_DENIED = [
     ("patch", "deployments.apps"),
     ("create", "configmaps"),
 ]
+# Konto Alloy (T17): Role tylko w namespace'ach z logami
+# (deploy/observability/values/alloy.yaml).
+ALLOY = "sa:monitoring/alloy"
+ALLOY_NAMESPACES = ("shop", "loadgen", "aiops", "intruder")
 
 # (kto, czasownik, zasób[/podzasób], namespace albo None = cały klaster, odpowiedź)
 MATRIX = [
@@ -98,6 +102,17 @@ MATRIX = [
         for namespace, name in SERVICE_ACCOUNTS
         for verb, resource in (("list", "secrets"), ("get", "pods"))
     ],
+    # Alloy (T17): pody i zdarzenia w namespace'ach z logami; bez secrets, configmaps
+    # i innych namespace'ów (domyślna ClusterRole chartu Alloy czyta secrets w klastrze)
+    *[
+        (ALLOY, verb, resource, namespace, True)
+        for namespace in ALLOY_NAMESPACES
+        for verb, resource in (("list", "pods"), ("watch", "events"))
+    ],
+    (ALLOY, "list", "secrets", "shop", False),
+    (ALLOY, "list", "secrets", None, False),
+    (ALLOY, "list", "configmaps", "shop", False),
+    (ALLOY, "list", "pods", "kube-system", False),
     # kontrola: użytkownik bez grupy zespołu
     ("bez-zespolu", "list", "pods", "shop", False),
 ]
