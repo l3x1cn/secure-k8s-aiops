@@ -38,7 +38,7 @@ Hook z `.pre-commit-config.yaml` przy każdym commicie uruchamia gitleaksa z `mi
 ## Klaster lokalny
 
 ```bash
-make up      # cała platforma: kind z Cilium i Hubble, namespace'y, sekrety, Prometheus i Grafana, obrazy :dev, aplikacje
+make up      # cała platforma: kind z Cilium i Hubble, namespace'y, sekrety, Prometheus, Grafana, Loki i Alloy, obrazy :dev, aplikacje
 make status  # węzły, release'y Helm i pody
 make urls    # adresy usług na hoście
 make down    # usuwa klaster razem ze wszystkim, co w nim działa
@@ -51,7 +51,7 @@ Kroki `make up` w tej kolejności; każdy działa też osobno:
 ```bash
 make cluster        # kind (control-plane + 2 workery) z Cilium i Hubble
 make secrets        # namespace'y i brakujące sekrety; wartości nie trafiają na dysk ani na ekran
-make observability  # kube-prometheus-stack w monitoring (najpierw make secrets): Prometheus, Alertmanager, Grafana
+make observability  # w monitoring (najpierw make secrets): kube-prometheus-stack (Prometheus, Alertmanager, Grafana), Loki i Alloy
 make images         # obrazy :dev frontend, orders i fault-runner, załadowane do kind
 make deploy         # overlay deploy/overlays/local (z ServiceMonitorami, regułami i Mailpit); czeka na gotowość Deploymentów
 ```
@@ -75,7 +75,7 @@ Testy na działającym klastrze (`make test-security` i `tests/security/mutation
 make test-security                          # testy z markerem security: RBAC (T11), NetworkPolicy (T12, T26), Pod Security (T13), sekrety (T14); wyniki w reports/junit-security.xml i reports/security.html
 bash tests/security/mutation_check.sh       # test mutacyjny (T26, ok. 3–4 min): bez shop/default-deny musi paść test poda bez reguły; polityka wraca na końcu, logi w reports/mutation-check/
 uv run --locked pytest tests/security       # te same testy bez raportów: konta usług, role zespołu, przepływy, pod bez reguły, odrzucenie poda uprzywilejowanego, securityContext podów, brak wartości sekretów w deploy/, gitleaks na historii HEAD
-uv run --locked pytest tests/observability  # metryki (T16): cele aplikacji, Hubble, reguły service:* (ok. 1 min, ruch z fault-runner spike); ruch Locust (T18): okres ok. 30 min, pomijany przez pierwsze 65 min Locusta
+uv run --locked pytest tests/observability  # metryki (T16): cele aplikacji, Hubble, reguły service:* (ok. 1 min, ruch z fault-runner spike); logi i zdarzenia (T17): źródło Loki w Grafanie, ERROR orders po fault errors, BackOff po dwóch fault crash (ok. 1 min; orders restartuje się dwa razy, e-mail PodRestarts); ruch Locust (T18): okres ok. 30 min, pomijany przez pierwsze 65 min Locusta
 ```
 
 ## Usługi
@@ -124,6 +124,13 @@ kubectl -n intruder exec deploy/intruder -- sh -c 'end=$(($(date +%s)+120)); whi
 kubectl -n loadgen exec deploy/fault-runner -- fault-runner fault errors --seconds 180 --param ratio=0.5
 curl -s 'localhost:8025/api/v1/search?query=subject:HighErrorRate'   # e-maile przez API Mailpit
 ```
+
+### Logi i zdarzenia (Loki)
+
+Grafana Alloy (DaemonSet w monitoring) wysyła do Lokiego logi kontenerów i zdarzenia Kubernetes z shop, loadgen, aiops i intruder; Loki trzyma je 72 h. Przegląd w Grafanie: Explore, źródło Loki. Etykiety i pola: [docs/architektura.md](docs/architektura.md#kontrakt-metryk-i-logów).
+
+- `{namespace="shop", container="orders"} | json | level="ERROR"`: błędy orders, np. po S3 (`fault errors`);
+- `{job="loki.source.kubernetes_events", namespace="shop"} | json | type="Warning"`: zdarzenia Warning, np. `BackOff` po drugim `fault crash` w ciągu 10 min.
 
 ## Jak pracujemy
 
