@@ -1,0 +1,76 @@
+# Wartości chartu Loki (T17) z grafana-community/helm-charts. Wersja i digest: LOKI_* w platform/versions.env;
+# instalacja: make observability (krok make up), release loki w namespace monitoring.
+# Tryb SingleBinary (w chartcie deploymentMode: Monolithic, dawniej SingleBinary): jeden pod loki-0 (StatefulSet
+# loki) z danymi w systemie plików na PVC. Usługa loki.monitoring.svc:3100 bez gatewaya: Alloy wysyła logi
+# (/loki/api/v1/push), czytają Grafana i anomaly-detector (T24).
+deploymentMode: Monolithic
+
+loki:
+  # Jeden tenant bez nagłówka X-Scope-OrgID; brak uwierzytelnienia opisuje ryzyko R1 w docs/bezpieczenstwo.md.
+  auth_enabled: false
+  commonConfig:
+    replication_factor: 1
+  storage:
+    type: filesystem
+  schemaConfig:
+    configs:
+      - from: "2024-04-01"
+        store: tsdb
+        object_store: filesystem
+        schema: v13
+        index:
+          prefix: index_
+          # Retencja wymaga indeksu dziennego.
+          period: 24h
+  # Retencja 72 h: starsze dane usuwa compactor. Helm scala tę mapę z domyślną mapą chartu.
+  limits_config:
+    retention_period: 72h
+  compactor:
+    retention_enabled: true
+    delete_request_store: filesystem
+  # Bez anonimowych statystyk użycia wysyłanych do Grafana Labs.
+  analytics:
+    reporting_enabled: false
+
+singleBinary:
+  # Domyślnie 0; z systemem plików chart dopuszcza najwyżej 1.
+  replicas: 1
+  # StorageClass standard z kind (local-path), jak PVC Prometheusa.
+  persistence:
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 1Gi
+
+# Pody trybu SimpleScalable (domyślnie po 3 repliki); walidacja chartu wymaga zera obok trybu Monolithic.
+backend:
+  replicas: 0
+read:
+  replicas: 0
+write:
+  replicas: 0
+
+# Bez gatewaya nginx: klienci łączą się z usługą loki na :3100.
+gateway:
+  enabled: false
+# memcached (domyślnie 8 GB pamięci na chunki i 1 GB na wyniki) przy jednym podzie jest zbędny;
+# memcached.enabled: false usuwa też konto loki-memcached.
+chunksCache:
+  enabled: false
+resultsCache:
+  enabled: false
+memcached:
+  enabled: false
+# Canary (DaemonSet z próbnymi logami) i helm test, który go wymaga.
+lokiCanary:
+  enabled: false
+test:
+  enabled: false
+# Sidecar reguł czyta ConfigMapy i Secrety: chart dałby kontu loki ClusterRole z odczytem secrets
+# w całym klastrze. Reguł Lokiego nie używamy (alerty są w Prometheusie).
+sidecar:
+  rules:
+    enabled: false
