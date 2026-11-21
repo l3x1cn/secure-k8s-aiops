@@ -3,6 +3,9 @@
 # Sondy uruchamia `kubectl exec` w podzie źródłowym: python w frontend, orders, fault-runner i locust,
 # curl w intruder. Cilium porzuca odrzucony pakiet SYN bez odpowiedzi, więc odrzucenie to
 # przekroczenie czasu sondy (5 s); odmowa połączenia znaczy, że cel nie działa.
+# Skutek default-deny (T26) sprawdza pod t26-unlisted bez własnej reguły, tworzony na czas
+# testu w shop, loadgen i aiops; tests/security/mutation_check.sh usuwa shop/default-deny
+# i wymaga, żeby ten test padł.
 # Uruchomienie: uv run --locked pytest tests/security/test_network_policies.py
 # (kubectl i hubble z mise.toml w PATH). Kontekst: zmienna KUBE_CONTEXT, domyślnie
 # kind-secure-k8s-aiops, jak w Makefile.
@@ -28,6 +31,9 @@ FAULT_RUNNER = ("loadgen", "fault-runner")
 LOCUST = ("loadgen", "locust")
 INTRUDER = ("intruder", "intruder")
 DEFAULT_DENY_NAMESPACES = ["shop", "loadgen", "aiops"]
+# Etykieta spoza tablicy etykiet w architekturze, więc pod wybierają tylko default-deny
+# i allow-dns; nie ma app.kubernetes.io/part-of, więc testy własnych podów go pomijają.
+UNLISTED_POD = "t26-unlisted"
 
 ORDERS_URL = "http://orders.shop.svc:8080"
 FRONTEND_URL = "http://frontend.shop.svc:8080"
@@ -106,9 +112,12 @@ INTERNET_SOURCES = [
 ]
 
 
-def kubectl(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
+def kubectl(
+    *args: str, stdin: str | None = None, check: bool = True
+) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
         ["kubectl", "--context", KUBE_CONTEXT, *args],
+        input=stdin,
         capture_output=True,
         text=True,
         timeout=60,
@@ -162,6 +171,60 @@ def intruder_curl(url: str) -> tuple[str, int]:
     if len(fields) != 2:
         pytest.fail(f"curl {url} w intruder: {result.stdout!r} {result.stderr}")
     return fields[0], int(fields[1])
+
+
+def unlisted_pod_manifest(namespace: str, image: str) -> str:
+    # securityContext z kontraktu T13, więc PSA restricted przyjmuje pod. Python jako PID 1
+    # ignoruje SIGTERM, więc terminationGracePeriodSeconds 1 skraca usuwanie poda.
+    return json.dumps(
+        {
+            "apiVersion": "v1",
+            "kind": "Pod",
+            "metadata": {
+                "name": UNLISTED_POD,
+                "namespace": namespace,
+                "labels": {"app.kubernetes.io/name": UNLISTED_POD},
+            },
+            "spec": {
+                "automountServiceAccountToken": False,
+                "restartPolicy": "Never",
+                "terminationGracePeriodSeconds": 1,
+                "securityContext": {
+                    "runAsNonRoot": True,
+                    "runAsUser": 10001,
+                    "runAsGroup": 10001,
+                    "seccompProfile": {"type": "RuntimeDefault"},
+                },
+                "containers": [
+                    {
+                        "name": "http",
+                        "image": image,
+                        "imagePullPolicy": "IfNotPresent",
+                        "command": [
+                            "python",
+                            "-m",
+                            "http.server",
+                            "8080",
+                            "--bind",
+                            "0.0.0.0",
+                        ],
+                        "ports": [{"name": "http", "containerPort": 8080}],
+                        # Sonda kubeleta przechodzi mimo default-deny (allow-localhost
+                        # w Cilium), więc Ready znaczy, że serwer już słucha.
+                        "readinessProbe": {
+                            "tcpSocket": {"port": 8080},
+                            "periodSeconds": 1,
+                        },
+                        "securityContext": {
+                            "allowPrivilegeEscalation": False,
+                            "readOnlyRootFilesystem": True,
+                            "capabilities": {"drop": ["ALL"]},
+                        },
+                    }
+                ],
+            },
+        }
+    )
 
 
 def hubble_drops(server: str, from_namespace: str, to_namespace: str) -> list[dict]:
@@ -256,6 +319,30 @@ def hubble_server() -> Iterator[str]:
         forward.wait(timeout=10)
 
 
+@pytest.fixture
+def unlisted_pod(request: pytest.FixtureRequest) -> Iterator[str]:
+    """IP poda UNLISTED_POD w namespace'ie request.param; po teście pod znika."""
+    target = ["-n", request.param, f"pod/{UNLISTED_POD}"]
+    # Obraz projektu z działającego Deploymentu: jest w każdym węźle (make images).
+    image = kubectl(
+        "get",
+        "deployment",
+        "orders",
+        "-n",
+        "shop",
+        "-o",
+        "jsonpath={.spec.template.spec.containers[0].image}",
+    ).stdout
+    # Pozostałość po przerwanym przebiegu.
+    kubectl("delete", *target, "--ignore-not-found", "--timeout=45s")
+    kubectl("create", "-f", "-", stdin=unlisted_pod_manifest(request.param, image))
+    try:
+        kubectl("wait", *target, "--for=condition=Ready", "--timeout=45s")
+        yield kubectl("get", *target, "-o", "jsonpath={.status.podIP}").stdout
+    finally:
+        kubectl("delete", *target, "--ignore-not-found", "--timeout=45s")
+
+
 @pytest.mark.parametrize(("source", "method", "url", "body", "expected"), ALLOWED)
 def test_allowed_flow(source, method, url, body, expected):
     assert http_status(source, method, url, body) == expected
@@ -287,8 +374,8 @@ def test_egress_to_internet_is_denied(source):
 
 @pytest.mark.parametrize("namespace", DEFAULT_DENY_NAMESPACES)
 def test_namespace_has_default_deny(namespace):
-    # Jedyny dowód dla aiops, który do T24 nie ma podów; w shop i loadgen chroni
-    # pody bez własnej reguły (fault-runner nie ma polityki ingress).
+    # Obiekt polityki. Jej skutek dla poda bez własnej reguły (w loadgen taki jest
+    # fault-runner bez polityki ingress) sprawdza test_intruder_to_unlisted_pod_is_denied.
     result = kubectl("get", "networkpolicies", "-n", namespace, "-o", "json")
     deny_all = [
         policy["metadata"]["name"]
@@ -299,6 +386,13 @@ def test_namespace_has_default_deny(namespace):
         and not policy["spec"].get("egress")
     ]
     assert deny_all, f"{namespace}: brak NetworkPolicy odcinającej cały ruch podów"
+
+
+@pytest.mark.parametrize("unlisted_pod", DEFAULT_DENY_NAMESPACES, indirect=True)
+def test_intruder_to_unlisted_pod_is_denied(unlisted_pod):
+    # Pod bez własnej reguły ingress odcina tylko default-deny: bez tej polityki
+    # serwer HTTP poda odpowiada intruderowi ("200", 0).
+    assert intruder_curl(f"http://{unlisted_pod}:8080/") == ("000", 28)
 
 
 def test_hubble_shows_policy_denied_intruder_to_orders(hubble_server):
