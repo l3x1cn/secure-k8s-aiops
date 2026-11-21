@@ -69,10 +69,12 @@ make prometheus    # Prometheus (od T16): http://localhost:9090
 make alertmanager  # Alertmanager (od T16): http://localhost:9093
 ```
 
-Testy na działającym klastrze (kubectl, kustomize i hubble z mise w PATH; `make test-security` dojdzie w T26, `make test` w T27); `tests/security/test_secrets.py` działa też bez klastra:
+Testy na działającym klastrze (`make test-security` i `tests/security/mutation_check.sh` same biorą narzędzia z mise; `uv run … pytest` potrzebuje kubectl, kustomize i hubble z mise w PATH; `make test` dojdzie w T27); `tests/security/test_secrets.py` działa też bez klastra:
 
 ```bash
-uv run --locked pytest tests/security       # RBAC (T11), NetworkPolicy (T12), Pod Security (T13), sekrety (T14): konta usług, role zespołu, przepływy, odrzucenie poda uprzywilejowanego, securityContext podów, brak wartości sekretów w deploy/, gitleaks na historii HEAD
+make test-security                          # testy z markerem security: RBAC (T11), NetworkPolicy (T12, T26), Pod Security (T13), sekrety (T14); wyniki w reports/junit-security.xml i reports/security.html
+bash tests/security/mutation_check.sh       # test mutacyjny (T26, ok. 3–4 min): bez shop/default-deny musi paść test poda bez reguły; polityka wraca na końcu, logi w reports/mutation-check/
+uv run --locked pytest tests/security       # te same testy bez raportów: konta usług, role zespołu, przepływy, pod bez reguły, odrzucenie poda uprzywilejowanego, securityContext podów, brak wartości sekretów w deploy/, gitleaks na historii HEAD
 uv run --locked pytest tests/observability  # metryki (T16): cele aplikacji, Hubble, reguły service:* (ok. 1 min, ruch z fault-runner spike); ruch Locust (T18): okres ok. 30 min, pomijany przez pierwsze 65 min Locusta
 ```
 
