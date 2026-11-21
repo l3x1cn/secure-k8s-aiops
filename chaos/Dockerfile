@@ -24,6 +24,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable --package chaos
 
 FROM python:3.13.16-slim@sha256:cf50a4f6ac4f026458b08d5222023d700ac806410dff5e9ca8728fa44f2b850f
+# Bramka Trivy (T15): poprawki bezpieczeństwa Debiana z trixie-security, których obraz bazowy jeszcze nie ma,
+# i obraz bez pip: runtime go nie potrzebuje (zależności instaluje uv w etapie build), a pakiety dołączone do pip
+# (pip/_vendor, m.in. certifi, msgpack, urllib3) mają podatności HIGH i CRITICAL. Wersje pakietów Debiana zależą
+# więc od dnia budowy (CI buduje bez cache); digest obrazu bazowego zostaje przypięty.
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes \
+    && rm -rf /var/lib/apt/lists/* \
+    && python -m pip uninstall --yes --root-user-action=ignore pip
 ENV PATH=/app/.venv/bin:$PATH \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
