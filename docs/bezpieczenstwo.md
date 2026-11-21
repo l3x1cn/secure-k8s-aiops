@@ -64,21 +64,21 @@ flowchart LR
 
 ## Wymogi bezpieczeństwa MVP
 
-Każdy z czterech wymogów z [karty projektu](karta-projektu.md#zakres-mvp) ma kontrolę i nazwany test automatyczny.
+Każdy z czterech wymogów z [karty projektu](karta-projektu.md#zakres-mvp) ma kontrolę i nazwany test automatyczny. Wszystkie testy z markerem `security` (`tests/security`) uruchamia `make test-security` (T26), wyniki w `reports/junit-security.xml` i `reports/security.html`.
 
 | Wymóg | Kontrola | Zadanie | Test automatyczny | Stan |
 |---|---|---|---|---|
 | W1 Ograniczenie uprawnień | konta usług bez tokenu API i bez bindingów; role zespołu tylko do odczytu, bez secrets i exec; PSA `restricted` i securityContext | T11, T13 | `tests/security/test_rbac.py::test_own_pods_have_no_service_account_token`, `::test_permission_matrix`, `::test_team_roles_are_read_only`; `tests/security/test_pod_security.py` | RBAC i test PSA działają |
 | W2 Brak publicznych sekretów | sekrety tworzone przy wdrożeniu (`make secrets`); gitleaks na całej historii w CI; gitleaks w pre-commit | T04, T06, T14 | wymagany job CI `secrets` (`make gitleaks`; zablokował PR #45); `tests/security/test_secrets.py` | działa |
 | W3 Skan obrazów | `trivy image --ignore-unfixed --severity CRITICAL,HIGH` przed publikacją; `trivy config deploy/` | T15 | `scripts/trivy.sh`: bramka w jobach `build` i `push` w `images.yml` (`push` publikuje dopiero po zielonej bramce) i w `make trivy-config` w jobie `manifests` w `ci.yml`; testowy PR z `FROM python:3.8-slim` zablokowany (PR #62, zamknięty bez scalania) | działa |
-| W4 Test niedozwolonego połączenia | default-deny w shop, loadgen i aiops z jawną listą przepływów; odrzucenie widoczne w Hubble; alert `PolicyDeniedConnections` | T12, T19, T26 | `tests/security/test_network_policies.py::test_intruder_to_orders_is_denied`, `::test_hubble_shows_policy_denied_intruder_to_orders`; `tests/security/mutation_check.sh` | testy sieci działają; alert działa (T19: e-mail w Mailpit ok. 2 min po pierwszej próbie, test automatyczny w T27); test mutacyjny w T26 |
+| W4 Test niedozwolonego połączenia | default-deny w shop, loadgen i aiops z jawną listą przepływów; odrzucenie widoczne w Hubble; alert `PolicyDeniedConnections` | T12, T19, T26 | `tests/security/test_network_policies.py::test_intruder_to_orders_is_denied`, `::test_intruder_to_unlisted_pod_is_denied`, `::test_hubble_shows_policy_denied_intruder_to_orders`; `tests/security/mutation_check.sh` | testy sieci i test mutacyjny działają; alert działa (T19: e-mail w Mailpit ok. 2 min po pierwszej próbie, test automatyczny w T27) |
 
 ## Macierz: zagrożenie → kontrola → zadanie → test
 
 | Zagrożenie | Kontrola | Zadanie | Test automatyczny | Stan |
 |---|---|---|---|---|
-| Z1 Ruch boczny | default-deny dla ruchu przychodzącego i wychodzącego, tylko przepływy z [tablicy](architektura.md#przepływy-sieciowe) | T12, T18 | `tests/security/test_network_policies.py::test_namespace_has_default_deny`, `::test_intruder_to_orders_is_denied`, `::test_orders_to_frontend_is_denied`, `::test_locust_to_orders_is_denied`, `::test_allowed_flow` | działa |
-| Z1 | test mutacyjny: bez `default-deny` w shop testy odmowy muszą zawieść | T26 | `tests/security/mutation_check.sh` | T26 |
+| Z1 Ruch boczny | default-deny dla ruchu przychodzącego i wychodzącego, tylko przepływy z [tablicy](architektura.md#przepływy-sieciowe) | T12, T18, T26 | `tests/security/test_network_policies.py::test_namespace_has_default_deny`, `::test_intruder_to_unlisted_pod_is_denied` (pod bez własnej reguły w shop, loadgen i aiops), `::test_intruder_to_orders_is_denied`, `::test_orders_to_frontend_is_denied`, `::test_locust_to_orders_is_denied`, `::test_allowed_flow` | działa |
+| Z1 | test mutacyjny: bez `default-deny` w shop pada test odmowy połączenia do poda bez własnej reguły (frontend i orders mają własne polityki ingress, więc ich testy odmowy przechodzą) | T26 | `tests/security/mutation_check.sh`: padają dokładnie `::test_intruder_to_unlisted_pod_is_denied[shop]` i `::test_namespace_has_default_deny[shop]`, a po przywróceniu polityki wszystkie testy sieci przechodzą | działa |
 | Z1 | orders wymaga `Authorization: Bearer`, porównanie w stałym czasie (`hmac.compare_digest`) | T05 | `services/orders/tests/test_app.py::test_orders_reject_requests_without_valid_token` | działa |
 | Z1 | wykrycie: alert `PolicyDeniedConnections`, cecha ML `service:policy_drops:rate1m` | T19, T24 | `tests/e2e/test_alert_flow.py` (ruch intruder → e-mail w Mailpit) | T27 |
 | Z2 Eksfiltracja | default-deny egress: pody w shop, loadgen i aiops nie łączą się z internetem | T12 | `tests/security/test_network_policies.py::test_egress_to_internet_is_denied` (pomijany bez wyjścia klastra do internetu) | działa |

@@ -167,8 +167,10 @@ Nowy workload w shop, loadgen albo aiops dopisuje wiersz w tablicy przepływów 
 Test: `tests/security/test_network_policies.py` (marker `security`). Sonda w podzie źródłowym trwa najwyżej 5 s; Cilium porzuca odrzucony pakiet bez odpowiedzi, więc odrzucenie to przekroczenie czasu. Test sprawdza:
 - dozwolone: frontend → orders (`POST /order` frontendu), fault-runner → orders `/healthz`, fault-runner → frontend, locust → frontend, intruder → frontend;
 - odrzucane: intruder → orders, orders → frontend, locust → orders, orders → internet, frontend → internet, fault-runner → internet, locust → internet (1.1.1.1:443; bez wyjścia klastra do internetu przypadki z internetem są pomijane);
-- politykę default-deny w shop, loadgen i aiops;
+- politykę default-deny w shop, loadgen i aiops oraz jej skutek: pod bez własnej reguły (`t26-unlisted`, tworzony na czas testu z obrazem orders i `python -m http.server 8080`) nie przyjmuje połączenia od intrudera;
 - odrzucenie intruder → orders z powodem `POLICY_DENIED` w Hubble.
+
+Bez `default-deny` w shop testy odmowy do frontend i orders dalej przechodzą: oba pody mają własne polityki ingress, a `allow-dns` izoluje egress każdego poda. Polityka chroni pod bez własnej reguły i pilnuje jej test mutacyjny `tests/security/mutation_check.sh` (T26). Skrypt usuwa `shop/default-deny` i wymaga porażki dokładnie `test_intruder_to_unlisted_pod_is_denied[shop]` i `test_namespace_has_default_deny[shop]`. Potem przywraca politykę i wymaga zielonego przebiegu. Wszystkie testy z markerem `security` uruchamia `make test-security` (wyniki w `reports/junit-security.xml` i `reports/security.html`).
 
 Ręcznie: `make hubble-relay`, w drugim terminalu `hubble observe --verdict DROPPED --from-namespace intruder`. Bufor Hubble ma 4095 przepływów na węzeł (w spokojnym klastrze kilkanaście minut), więc przepływ trzeba wywołać tuż przed odczytem. W Hubble UI (`make hubble-ui`) adres `http://localhost:12000/?namespace=intruder&verdicts=2` pokazuje tylko odrzucone przepływy:
 
@@ -282,7 +284,7 @@ Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FA
 ├── .pre-commit-config.yaml # hook gitleaks przed commitem (T14)
 ├── .trivyignore           # wyjątki bramki Trivy: uzasadnienie i data przeglądu (T15)
 ├── mise.toml              # wersje narzędzi (T02)
-├── Makefile               # doctor (T02); cluster, hubble-ui, hubble-relay (T03); up, down, namespaces, secrets, images, deploy, status, urls, prometheus, alertmanager (T04); lint, unit, gitleaks, manifests (T06); trivy-config (T15); observability (T16); grafana-password (T14); test, report (dalej)
+├── Makefile               # doctor (T02); cluster, hubble-ui, hubble-relay (T03); up, down, namespaces, secrets, images, deploy, status, urls, prometheus, alertmanager (T04); lint, unit, gitleaks, manifests (T06); trivy-config (T15); observability (T16); grafana-password (T14); test-security (T26); test, report (dalej)
 ├── pyproject.toml         # uv workspace, Python 3.13 (T02)
 ├── platform/              # kind, Cilium, versions.env (T03, T04)
 ├── deploy/
