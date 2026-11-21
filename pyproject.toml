@@ -33,6 +33,7 @@ dev = [
     "numpy>=2.5.4",
     "pandas>=3.1.0",
     "pytest>=9.1.1",
+    "pytest-html>=4.2.0",
     "pyyaml>=6.0.3",
     "scikit-learn>=1.9.1",
 ]
@@ -41,9 +42,10 @@ dev = [
 # Testy jednostkowe bez klastra (`make unit`, job unit w CI). Testy wymagające klastra
 # trafiają do tests/ (T11–T14, T26, T27), który nie należy do testpaths.
 testpaths = ["chaos", "libs", "services"]
-# Usługi mają osobne katalogi tests/ z plikami o tych samych nazwach.
-addopts = ["--import-mode=importlib"]
-# Testy na klastrze: bezpieczeństwa (tests/security, T11–T14; `-m security`, make test-security w T26)
+# Usługi mają osobne katalogi tests/ z plikami o tych samych nazwach (--import-mode=importlib).
+# --strict-markers: literówka w markerze to błąd zbierania, a nie test po cichu pominięty przez `-m security`.
+addopts = ["--import-mode=importlib", "--strict-markers"]
+# Testy na klastrze: bezpieczeństwa (tests/security, T11–T14, T26; `make test-security` wybiera je `-m security`)
 # i obserwowalności (tests/observability, T16, T27; `-m observability`).
 markers = [
     "security: test bezpieczeństwa na działającym klastrze (tests/security)",
