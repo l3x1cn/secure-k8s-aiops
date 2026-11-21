@@ -11,6 +11,7 @@ Skanery: gitleaks (brak wycieków), Semgrep (bez trafień w zmianach), Bandit (t
 ## Findings
 
 ### [LOW] SEC-001: Drugie przerwanie podczas przywracania w pułapce EXIT zostawia shop/default-deny usunięte, bez ostrzeżenia [verified]
+**Status:** ✅ Fixed (2026-11-21)
 
 **ID:** SEC-001
 **Location:** `tests/security/mutation_check.sh:74`
@@ -46,6 +47,7 @@ Potem `mise exec shellcheck@0.11.0 -- shellcheck tests/security/mutation_check.s
 ---
 
 ### [LOW] SEC-002: Linie ERROR liczą się jako oczekiwane porażki, więc przejściowy błąd fixture może udać wykrycie mutacji [verified]
+**Status:** ✅ Fixed (2026-11-21)
 
 **ID:** SEC-002
 **Location:** `tests/security/mutation_check.sh:52`
@@ -65,6 +67,7 @@ Wymagać, żeby `test_intruder_to_unlisted_pod_is_denied[shop]` był w linii `FA
 ---
 
 ### [LOW] MAINT-001: `mutation_check.sh` wcina tabulatorami, pozostałe skrypty powłoki dwiema spacjami [verified]
+**Status:** ✅ Fixed (2026-11-21)
 
 **ID:** MAINT-001
 **Location:** `tests/security/mutation_check.sh:35`
@@ -83,6 +86,7 @@ Wciąć skrypt dwiema spacjami na poziom (maksymalna głębokość 2), potem uru
 ---
 
 ### [LOW] MAINT-002: Sprawdzenie narzędzi przed mutacją pomija `hubble` [verified]
+**Status:** ✅ Fixed (2026-11-21)
 
 **ID:** MAINT-002
 **Location:** `tests/security/mutation_check.sh:34`
@@ -108,12 +112,18 @@ for tool in kubectl uv hubble; do
 ---
 
 ### [LOW] DOC-001: Wiersz testu mutacyjnego podaje tylko połowę powodu, dla którego pozostałe testy odmowy przechodzą [verified, obniżone z MEDIUM]
+**Status:** ✅ Fixed (2026-11-21)
 
 **ID:** DOC-001
 **Location:** `docs/bezpieczenstwo.md:81`
 **Category:** Documentation
 **Drift-class:** decision
 **Fix-policy:** needs-decision
+**Decision:** A — W docs/bezpieczenstwo.md:81 (wiersz „| Z1 | test mutacyjny:”, kolumna „Kontrola”) zamień nawias „(frontend i orders mają własne polityki ingress, więc ich testy odmowy przechodzą)” na „(frontend i orders mają własne polityki ingress, a `allow-dns` izoluje egress każdego poda w shop, więc ich testy odmowy przechodzą)” i nic więcej nie zmieniaj w tym wierszu ani w żadnym innym pliku. [user, 2026-11-21]
+**Verification-plan:** tool: Grep pattern=`ingress, więc ich testy odmowy` path=`docs/*.md;README.md;tests` → (empty), no match line in any top-level doc, the README or tests; tool: Grep pattern=`allow-dns.? izoluje egress każdego poda` path=`docs/*.md;tests/security/mutation_check.sh` → match lines in exactly three files: docs/architektura.md, docs/bezpieczenstwo.md (line 81) and tests/security/mutation_check.sh; Read docs/bezpieczenstwo.md:81 → excerpt contains „a `allow-dns` izoluje egress każdego poda w shop, więc ich testy odmowy przechodzą) | T26 |” (soft)
+**Decision-pin:** block=1f1280577414d33a5b7495dd14dd10210d1d75924ab7058412a9f64d7e76fbe6 | docs/bezpieczenstwo.md=5694109896402fe984b91dceb8e6ad137503f6d6:edit
+**Dispatch:** attempt 1 dispatched 2026-11-21
+**Verification:** advisory — Grep `ingress, więc ich testy odmowy` (brak trafień), Grep `allow-dns.? izoluje egress każdego poda` (trzy pliki), re-read docs/bezpieczenstwo.md:81 (soft)
 
 **Problem:**
 Wiersz mówi „(frontend i orders mają własne polityki ingress, więc ich testy odmowy przechodzą)”. `test_orders_to_frontend_is_denied` przechodzi bez `shop/default-deny` tylko dzięki `allow-dns` (`podSelector: {}`, Egress, `deploy/base/networkpolicies/dns.yaml:11-12`), który izoluje egress orders; `frontend-ingress` wpuszcza dowolne źródło na TCP 8080 (`deploy/base/networkpolicies/shop.yaml:17-20`). Testy `test_egress_to_internet_is_denied` dla frontend i orders też przechodzą dzięki izolacji egress. Pełny powód jest w `docs/architektura.md:173` i w nagłówku `tests/security/mutation_check.sh:5-7`. Wiersz dotyczy połączeń do frontend i orders, więc „własne polityki ingress” jest dla nich poprawne; niedomówienie dotyczy egress.
