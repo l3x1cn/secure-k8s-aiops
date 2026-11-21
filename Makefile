@@ -16,6 +16,7 @@ CILIUM_CHART := oci://quay.io/cilium/charts/cilium
 PROMETHEUS_OPERATOR_CRDS_CHART := oci://ghcr.io/prometheus-community/charts/prometheus-operator-crds
 KUBE_PROMETHEUS_STACK_CHART := oci://ghcr.io/prometheus-community/charts/kube-prometheus-stack
 LOKI_CHART := oci://ghcr.io/grafana-community/helm-charts/loki
+ALLOY_CHART := oci://ghcr.io/grafana/helm-charts/alloy
 # Obrazy budowane w projekcie (w deploy/base bez tagu; overlay local ustawia :dev).
 # CI (.github/workflows/images.yml, T10) publikuje je w GHCR z tagiem sha-<7 znaków SHA commita>; IMAGE_REPO jest też w env tego workflow i jako OWN_IMAGE_REPO w tests/security/test_pod_security.py: zmieniaj razem.
 IMAGE_REPO := ghcr.io/l3x1cn/secure-k8s-aiops
@@ -106,6 +107,8 @@ secrets: namespaces
 
 # kube-prometheus-stack w monitoring (T16): Prometheus, Alertmanager, Grafana (NodePort 30300), kube-state-metrics, node-exporter.
 # Potem Loki (T17): tryb SingleBinary, usługa loki.monitoring.svc:3100; źródło Loki w Grafanie dodają wartości kube-prometheus-stack.
+# Na końcu Grafana Alloy (T17, DaemonSet): logi podów i zdarzenia z shop, loadgen, aiops i intruder do Lokiego; Role w tych
+# namespace'ach, więc namespace'y (zależność secrets → namespaces) muszą istnieć przed instalacją.
 # Wersje i digesty z platform/versions.env, wartości w deploy/observability/values/; CRD instaluje make cluster.
 # Grafana czyta hasło admina z Secretu grafana-admin, więc sekrety muszą istnieć przed instalacją.
 # ServiceMonitory aplikacji, reguły nagrywające i alertów oraz Mailpit stosuje make deploy (deploy/base, deploy/observability).
@@ -118,6 +121,10 @@ observability: secrets
 		--version $(LOKI_VERSION) \
 		--kube-context $(KUBE_CONTEXT) --namespace monitoring \
 		--values deploy/observability/values/loki.yaml --wait --timeout 10m
+	helm upgrade --install alloy $(ALLOY_CHART)@$(ALLOY_CHART_DIGEST) \
+		--version $(ALLOY_VERSION) \
+		--kube-context $(KUBE_CONTEXT) --namespace monitoring \
+		--values deploy/observability/values/alloy.yaml --wait --timeout 10m
 
 # Obrazy :dev budowane z korzenia repozytorium (workspace uv) i ładowane do węzłów kind.
 # --provenance=false: atestacja BuildKit w magazynie obrazów containerd psuje kind load (kubernetes-sigs/kind#3795).
