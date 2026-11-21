@@ -21,7 +21,7 @@ IMAGE_REPO := ghcr.io/l3x1cn/secure-k8s-aiops
 # Namespace'y z Deploymentami aplikacji (etykieta app.kubernetes.io/part-of=secure-k8s-aiops), na które czeka deploy.
 APP_NAMESPACES := shop loadgen aiops intruder monitoring
 
-.PHONY: doctor lint unit gitleaks manifests trivy-config up down cluster namespaces secrets observability images deploy status urls grafana-password hubble-ui hubble-relay prometheus alertmanager
+.PHONY: doctor lint unit gitleaks manifests trivy-config up down cluster namespaces secrets observability images deploy test-security status urls grafana-password hubble-ui hubble-relay prometheus alertmanager
 
 # Sprawdza narzędzia z mise.toml, dostęp do Dockera bez sudo, pamięć Dockera, Docker Buildx, openssl i limity inotify.
 doctor:
@@ -130,6 +130,15 @@ deploy:
 		kubectl --context $(KUBE_CONTEXT) -n $$ns rollout status deployment \
 			-l app.kubernetes.io/part-of=secure-k8s-aiops --timeout=5m || exit 1; \
 	done
+
+# Testy bezpieczeństwa (T26) na klastrze z make up: każdy test z markerem security w tests/ (RBAC T11,
+# NetworkPolicy T12 i T26, Pod Security T13, sekrety T14; test_secrets.py działa też bez klastra), z tym samym
+# kontekstem kubectl co pozostałe cele. Wyniki: reports/junit-security.xml i reports/security.html (pytest-html,
+# jeden plik ze stylami); stare wyniki znikają przed przebiegiem. Test mutacyjny jest osobno: bash tests/security/mutation_check.sh.
+test-security:
+	@mkdir -p reports && rm -f reports/junit-security.xml reports/security.html
+	KUBE_CONTEXT='$(KUBE_CONTEXT)' uv run --locked pytest -m security tests \
+		--junitxml=reports/junit-security.xml --html=reports/security.html --self-contained-html
 
 # Stan platformy: węzły, release'y Helm i pody we wszystkich namespace'ach.
 status:
