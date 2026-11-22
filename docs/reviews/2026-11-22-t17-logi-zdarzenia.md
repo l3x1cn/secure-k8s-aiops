@@ -142,7 +142,11 @@ Dodaj test reguł Role w czterech namespace'ach i braku ClusterRoleBinding dla k
 
 ```python
 ALLOY_RULES = [
-    {"apiGroups": [""], "resources": ["pods", "events"], "verbs": ["get", "list", "watch"]}
+    {
+        "apiGroups": [""],
+        "resources": ["pods", "events"],
+        "verbs": ["get", "list", "watch"],
+    }
 ]
 
 
