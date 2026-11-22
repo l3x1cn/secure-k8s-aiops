@@ -12,7 +12,8 @@ crds:
 
 alloy:
   configMap:
-    # Chart przepuszcza treść przez tpl Helma, więc nie może zawierać {{ }}.
+    # Chart przepuszcza treść przez tpl Helma: lista namespace'ów z logami pochodzi z rbac.namespaces (na dole pliku),
+    # więc discovery, zdarzenia i uprawnienia nie rozjadą się. Treść nie może zawierać innych znaczników szablonu Helma.
     content: |
       // Logi podów z plików węzła (wzorzec z dokumentacji Alloy „Collect Kubernetes logs”):
       // discovery.kubernetes → __path__ z UID poda i nazwy kontenera → loki.source.file.
@@ -20,7 +21,7 @@ alloy:
         role = "pod"
 
         namespaces {
-          names = ["shop", "loadgen", "aiops", "intruder"]
+          names = {{ .Values.rbac.namespaces | toJson }}
         }
 
         // Tylko pody z węzła tej instancji DaemonSetu; chart ustawia HOSTNAME na spec.nodeName.
@@ -78,8 +79,15 @@ alloy:
           expressions = { level = "" }
         }
 
+        // Etykieta tylko z wartości kontraktu; inna wartość (np. z przejętego poda) nie tworzy nowych strumieni.
+        // Niepasująca wartość nie dodaje contract_level, więc linia zostaje bez level; wartość nadal jest w treści (| json).
+        stage.regex {
+          source     = "level"
+          expression = "^(?P<contract_level>DEBUG|INFO|WARNING|ERROR)$"
+        }
+
         stage.labels {
-          values = { level = "" }
+          values = { level = "contract_level" }
         }
 
         // loki.source.file dodaje etykietę filename; strumień wyznaczają namespace, pod i container.
@@ -91,7 +99,7 @@ alloy:
       // Zdarzenia Kubernetes z tych samych namespace'ów jako linie JSON, job="loki.source.kubernetes_events".
       // Z clusteringiem każdy namespace czyta jedna instancja, więc zdarzenie trafia do Lokiego raz.
       loki.source.kubernetes_events "events" {
-        namespaces = ["shop", "loadgen", "aiops", "intruder"]
+        namespaces = {{ .Values.rbac.namespaces | toJson }}
         log_format = "json"
         forward_to = [loki.write.default.receiver]
 
@@ -106,6 +114,7 @@ alloy:
         }
       }
   # Instancje DaemonSetu tworzą klaster Alloy przez usługę alloy-cluster (port 12345).
+  # Port 12345 (klaster, UI, debug) bez TLS i uwierzytelnienia: ryzyko R1 w docs/bezpieczenstwo.md, ingress/TLS w T29.
   clustering:
     enabled: true
   # Bez anonimowych statystyk użycia wysyłanych do Grafana Labs (--disable-reporting).

@@ -25,6 +25,8 @@ loki:
   # Retencja 72 h: starsze dane usuwa compactor. Helm scala tę mapę z domyślną mapą chartu.
   limits_config:
     retention_period: 72h
+    # API usuwania (/loki/api/v1/delete) bez uwierzytelnienia pozwala każdemu podowi z dostępem do :3100 ukryć logi; retencja działa bez niego.
+    deletion_mode: disabled
   compactor:
     retention_enabled: true
     delete_request_store: filesystem

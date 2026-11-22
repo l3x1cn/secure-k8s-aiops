@@ -64,6 +64,13 @@ DEVELOPER_DENIED = [
 # (deploy/observability/values/alloy.yaml).
 ALLOY = "sa:monitoring/alloy"
 ALLOY_NAMESPACES = ("shop", "loadgen", "aiops", "intruder")
+ALLOY_RULES = [
+    {
+        "apiGroups": [""],
+        "resources": ["pods", "events"],
+        "verbs": ["get", "list", "watch"],
+    }
+]
 
 # (kto, czasownik, zasób[/podzasób], namespace albo None = cały klaster, odpowiedź)
 MATRIX = [
@@ -211,6 +218,22 @@ def test_team_roles_are_read_only():
             assert {r for r in resources if "/" in r} <= {"pods/log"}, (name, rule)
             assert not rule.get("nonResourceURLs"), (name, rule)
             assert not rule.get("resourceNames"), (name, rule)
+
+
+def test_alloy_has_only_namespaced_read_rules():
+    # Jak wyżej: dowód z reguł roli, nie z próbek `can-i` (create, pods/exec albo
+    # inny zasób w Role oraz ClusterRoleBinding konta nie przejdą).
+    for namespace in ALLOY_NAMESPACES:
+        rules = get_json("role", "alloy", "-n", namespace)["rules"]
+        assert rules == ALLOY_RULES, (namespace, rules)
+    cluster_bindings = [
+        binding["metadata"]["name"]
+        for binding in get_json("clusterrolebindings")["items"]
+        for subject in binding.get("subjects") or []
+        if subject["kind"] == "ServiceAccount"
+        and (subject.get("namespace"), subject["name"]) == ("monitoring", "alloy")
+    ]
+    assert not cluster_bindings, cluster_bindings
 
 
 @pytest.mark.parametrize(("namespace", "name"), SERVICE_ACCOUNTS)

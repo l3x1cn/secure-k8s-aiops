@@ -11,6 +11,8 @@ Skanery: gitleaks i trufflehog (brak wycieków), Semgrep i Bandit (trafienia odr
 ## Findings
 
 ### [MEDIUM] SEC-001: Każdy pod z dostępem do Lokiego może usuwać logi i zatrzymać Lokiego bez poświadczeń; R1 wymienia tylko odczyt i fałszywe wpisy [verified]
+**Status:** ✅ Fixed (2026-11-22)
+
 
 **ID:** SEC-001
 **Location:** `deploy/observability/values/loki.yaml:29`
@@ -41,6 +43,8 @@ limits_config:
 ```
 
 ### [MEDIUM] SEC-002: Etykieta `level` przyjmuje dowolną wartość z tekstu logu, więc jeden przejęty pod wyczerpuje limit strumieni Lokiego [verified]
+**Status:** ✅ Fixed (2026-11-22)
+
 
 **ID:** SEC-002
 **Location:** `deploy/observability/values/alloy.yaml:81`
@@ -85,6 +89,8 @@ stage.labels {
 ```
 
 ### [LOW] SEC-003: Port klastra Alloy 12345 bez uwierzytelnienia; obcy peer może przejąć zbieranie zdarzeń wybranych namespace'ów [verified]
+**Status:** ✅ Fixed (2026-11-22)
+
 
 **ID:** SEC-003
 **Location:** `deploy/observability/values/alloy.yaml:110`
@@ -125,6 +131,8 @@ spec:
 ```
 
 ### [MEDIUM] MAINT-001: Twierdzenie „Role tylko z get, list, watch na pods i events” dla Alloy sprawdzają wyłącznie próbki `can-i` [verified]
+**Status:** ✅ Fixed (2026-11-22)
+
 
 **ID:** MAINT-001
 **Location:** `tests/security/test_rbac.py:105-115`
@@ -165,6 +173,8 @@ def test_alloy_has_only_namespaced_read_rules():
 ```
 
 ### [LOW] MAINT-002: Lista namespace'ów z logami występuje trzy razy w `alloy.yaml` bez kontroli zgodności [verified]
+**Status:** ✅ Fixed (2026-11-22)
+
 
 **ID:** MAINT-002
 **Location:** `deploy/observability/values/alloy.yaml:23`
@@ -191,12 +201,19 @@ namespaces = {{ .Values.rbac.namespaces | toJson }}
 ```
 
 ### [MEDIUM] DOC-001: R1 twierdzi, że „każdy pod w klastrze” sięga Lokiego, a default-deny egress blokuje większość podów projektu [verified]
+**Status:** ✅ Fixed (2026-11-22)
+
 
 **ID:** DOC-001
 **Location:** `docs/bezpieczenstwo.md:111`
 **Category:** Documentation
 **Drift-class:** decision
 **Fix-policy:** needs-decision
+**Decision:** A — W docs/bezpieczenstwo.md:111 (wiersz R1, kolumna „Ryzyko”) zastąp zdanie „Loki (T17) przyjmuje zapisy i zapytania bez uwierzytelnienia (`auth_enabled: false`), więc każdy pod w klastrze może czytać logi i zdarzenia z shop, loadgen, aiops i intruder albo dopisać fałszywe wpisy.” trzema zdaniami „Loki (T17) przyjmuje zapisy i zapytania bez uwierzytelnienia (`auth_enabled: false`), więc każdy pod spoza shop, loadgen i aiops (intruder, monitoring, kube-system i inne namespace'y bez polityk egress) oraz anomaly-detector (`anomaly-detector-egress`, tylko :3100) może czytać logi i zdarzenia z shop, loadgen, aiops i intruder albo dopisać fałszywe wpisy. Pozostałe pody shop, loadgen i aiops nie sięgają Lokiego (default-deny egress, T12). Bezpośredni push (`/loki/api/v1/push`) z tysiącami różnych wartości etykiet wyczerpuje też limit 5000 aktywnych strumieni jedynego tenanta, a Loki odrzuca wtedy nowe strumienie wszystkich namespace'ów (np. pierwszy strumień `level="ERROR"` orders).”, nie zmieniając reszty wiersza (`/ingester/shutdown`, `/flush`, memberlist :7946, `deletion_mode: disabled`, port Alloy :12345 i przejęcie zbierania zdarzeń, kolumny „Dlaczego akceptujemy” i „Kiedy wracamy”). [user, 2026-11-22]
+**Verification-plan:** Grep pattern="każdy pod w klastrze" path=docs/bezpieczenstwo.md;docs/architektura.md → brak dopasowań; Grep pattern="app.kubernetes.io/name: loki" path=deploy/base/networkpolicies → dokładnie jedno dopasowanie, aiops.yaml linia 57; Read path=docs/bezpieczenstwo.md:111 → fragment zawiera „każdy pod spoza shop, loadgen i aiops”, „anomaly-detector (`anomaly-detector-egress`, tylko :3100)” i „limit 5000 aktywnych strumieni” (soft); Read path=docs/bezpieczenstwo.md:111 → fragment nadal zawiera `/ingester/shutdown`, `deletion_mode: disabled` i „Port klastra Alloy :12345” (soft)
+**Decision-pin:** block=4b4b0279aa05754e23914b6f811b1bf9d139ea39359b043db21ce72e315dd3e4 | docs/bezpieczenstwo.md=506e8961896474b55d0be6abf2aba228e47097ca:edit | /loki/api/v1/push=absent:ref | /ingester/shutdown=absent:ref | /flush=absent:ref
+**Dispatch:** attempt 1 dispatched 2026-11-22
+**Verification:** advisory — Grep „każdy pod w klastrze” w bezpieczenstwo.md i architektura.md: brak dopasowań; Grep app.kubernetes.io/name: loki w networkpolicies: jedno dopasowanie, aiops.yaml:57; Read bezpieczenstwo.md:111 (soft): zawiera „każdy pod spoza shop, loadgen i aiops”, „anomaly-detector (`anomaly-detector-egress`, tylko :3100)”, „limit 5000 aktywnych strumieni”; Read bezpieczenstwo.md:111 (soft): nadal zawiera `/ingester/shutdown`, `deletion_mode: disabled`, „Port klastra Alloy :12345”
 
 **Problem:**
 Dodane zdanie R1 mówi: „każdy pod w klastrze może czytać logi i zdarzenia z shop, loadgen, aiops i intruder albo dopisać fałszywe wpisy”. `default-deny.yaml:7,18,29` odbiera egress w shop, loadgen i aiops, a reguły per pod (`shop.yaml:25`, `loadgen.yaml:6`, `loadgen.yaml:37`) nie otwierają drogi do Lokiego. Tylko `anomaly-detector-egress` (`aiops.yaml:50-60`) pozwala na `monitoring/loki:3100`. Zdanie przeczy wierszom Z1 i Z2 tego samego dokumentu.

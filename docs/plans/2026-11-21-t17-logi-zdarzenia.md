@@ -802,7 +802,7 @@ Korzeń repozytorium, gałąź `t17-logi-zdarzenia` z Taskami 1–4, klaster `ki
 
 1. Bez klastra:
    - `make lint && make unit && make manifests && make trivy-config` → kod 0, `unit` → `96 passed`;
-   - `mise exec -- uv run --locked pytest -m security tests --collect-only -q | tail -n 1` → `116/131 tests collected (15 deselected)`; `-m observability` → `15/131 tests collected (116 deselected)`. Inna baza na `main`: różnica względem `main` musi wynosić +12 (security) i +3 (observability).
+   - `mise exec -- uv run --locked pytest -m security tests --collect-only -q | tail -n 1` → `117/132 tests collected (15 deselected)`; `-m observability` → `15/132 tests collected (117 deselected)`. Inna baza na `main`: różnica względem `main` musi wynosić +13 (security) i +3 (observability).
 2. Kryteria akceptacji na działającym klastrze:
 
    ```bash
@@ -811,7 +811,7 @@ Korzeń repozytorium, gałąź `t17-logi-zdarzenia` z Taskami 1–4, klaster `ki
    make test-security 2>&1 | tee reports/t17-security.txt
    ```
 
-   - `3 passed`; `make test-security` → `116 passed` (bez internetu `112 passed, 4 skipped`).
+   - `3 passed`; `make test-security` → `117 passed` (bez internetu `113 passed, 4 skipped`).
 3. Zdarzenie trafia do Lokiego raz, a instancje Alloy tworzą klaster:
 
    ```bash
@@ -844,7 +844,7 @@ Korzeń repozytorium, gałąź `t17-logi-zdarzenia` z Taskami 1–4, klaster `ki
 
    - `make up` → kod 0, czas `real` zapisz do opisu PR;
    - `tests/observability` → `14 passed, 1 skipped` (`test_traffic` czeka na 65 min Locusta);
-   - `make test-security` → `116 passed` (bez internetu `112 passed, 4 skipped`).
+   - `make test-security` → `117 passed` (bez internetu `113 passed, 4 skipped`).
 
 ## Po dostarczeniu (GitHub)
 
