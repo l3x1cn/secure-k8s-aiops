@@ -17,8 +17,9 @@ updates:
     cooldown:
       default-days: 7
     # Pakiety workspace'u uv (pyproject.toml). Dependabot szuka ich na PyPI
-    # (dependabot/dependabot-core#14004), a pod nazwami chaos i frontend są tam obce pakiety.
+    # (dependabot/dependabot-core#14004), a pod nazwami aiops, chaos i frontend są tam obce pakiety.
     ignore:
+      - dependency-name: aiops
       - dependency-name: chaos
       - dependency-name: frontend
       - dependency-name: orders
