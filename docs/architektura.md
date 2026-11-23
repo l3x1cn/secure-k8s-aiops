@@ -10,8 +10,8 @@ Ten dokument to wspólny kontrakt dla zadań T01–T36. Zmiana kontraktu wymaga 
 | Cilium + Hubble (relay, UI, metryki) | 1.20.3 | kube-system | T03 |
 | prometheus-operator-crds | przypięta w `platform/versions.env` | — | T03 |
 | kube-prometheus-stack (Prometheus, Alertmanager, Grafana) | przypięta w `versions.env` | monitoring | T16 |
-| Loki (chart z `grafana-community/helm-charts`, SingleBinary) | przypięta w `versions.env` | monitoring | T17 |
-| Grafana Alloy | przypięta w `versions.env` | monitoring | T17 |
+| Loki (chart `loki` z `grafana-community/helm-charts`, OCI `ghcr.io/grafana-community/helm-charts`; SingleBinary, w chartcie `deploymentMode: Monolithic`) | przypięta w `versions.env` | monitoring | T17 |
+| Grafana Alloy (chart `alloy` z `grafana/helm-charts`, OCI `ghcr.io/grafana/helm-charts`; DaemonSet) | przypięta w `versions.env` | monitoring | T17 |
 | Mailpit (`docker.io/axllent/mailpit`) | v1.33.0, przypięta po digest w `deploy/observability/mailpit/deployment.yaml` | monitoring | T19 |
 | frontend, orders (Python 3.13, FastAPI) | — | shop | T05 |
 | locust (`docker.io/locustio/locust`) | 2.47.0, przypięta po digest w `deploy/base/locust/deployment.yaml` | loadgen | T18 |
@@ -21,7 +21,7 @@ Ten dokument to wspólny kontrakt dla zadań T01–T36. Zmiana kontraktu wymaga 
 
 Narzędzia CLI w `mise.toml` (T02): Python 3.13.16, kind 0.33.0, kubectl 1.37.1, helm 4.3.1, kustomize 5.8.3, cilium-cli 0.20.1, hubble 1.20.2 (`github:cilium/hubble`), trivy 0.76.0, gitleaks 8.30.1, kubeconform 0.8.0, promtool 3.15.0, uv 0.13.7, ruff 0.17.3 (T06), yq 4.54.1 (T19); opentofu 1.13.1 dla rozszerzenia T33.
 
-Wersje oznaczone „przypięta” wybiera się w dniu realizacji zadania (najnowsza stabilna) i wpisuje do `platform/versions.env`, gdy czyta je Makefile; obraz zewnętrzny używany tylko w manifeście z `deploy/` (intruder, locust) przypina się tagiem i digestem w tym manifeście. Trivy nigdy w wersji 0.69.4 (złośliwe wydanie, CVE-2026-33634). Charty Helm z rejestrów OCI przypina się wersją i digestem manifestu (`*_CHART_DIGEST` w `platform/versions.env`): `make cluster` instaluje `<chart>@<digest>` z `--version`, a Helm przerywa instalację, gdy tag wersji wskazuje inny digest.
+Wersje oznaczone „przypięta” wybiera się w dniu realizacji zadania (najnowsza stabilna) i wpisuje do `platform/versions.env`, gdy czyta je Makefile; obraz zewnętrzny używany tylko w manifeście z `deploy/` (intruder, locust) przypina się tagiem i digestem w tym manifeście. Trivy nigdy w wersji 0.69.4 (złośliwe wydanie, CVE-2026-33634). Charty Helm z rejestrów OCI przypina się wersją i digestem manifestu (`*_CHART_DIGEST` w `platform/versions.env`): `make cluster` instaluje `<chart>@<digest>` z `--version`, a Helm przerywa instalację, gdy tag wersji wskazuje inny digest. Tak samo `make observability` instaluje kube-prometheus-stack (T16) oraz Loki i Alloy (T17); oba charty T17 pochodzą z rejestrów OCI.
 
 Kubernetes 1.36 zamiast 1.37 to świadomy downgrade o jedną wersję (T03). kind 0.33.0 domyślnie stawia Kubernetes 1.37.0, ale Cilium 1.20 deklaruje testy e2e tylko dla Kubernetes 1.33–1.36 ([wymagania Cilium 1.20](https://docs.cilium.io/en/v1.20/network/kubernetes/requirements/)), więc węzły używają obrazu `kindest/node:v1.36.4`, zbudowanego dla kind 0.33.0. kubectl 1.37.1 z `mise.toml` zostaje, bo odchylenie o jedną wersję jest dozwolone. Na 1.37 przechodzimy, gdy przypięta wersja Cilium obejmie ją testami.
 
@@ -90,7 +90,7 @@ Nowy workload z tą etykietą test obejmuje bez zmian w kodzie testu. `runAsGrou
 
 ## RBAC
 
-Żaden własny pod (workloady z tabeli poniżej) nie rozmawia z API klastra, a członkowie zespołu dostają tylko odczyt (T11). Zakaz nie obejmuje komponentów platformy z kube-system (Cilium, Hubble, CoreDNS) ani chartów z T16 i T17: mają własne konta i RBAC. Klaster nie odrzuca poda z tokenem API, więc złamanie zakazu wykrywa dopiero `tests/security/test_rbac.py` na działającym klastrze. Manifesty są w `deploy/base/rbac/`; `make deploy` stosuje je razem z aplikacjami.
+Żaden własny pod (workloady z tabeli poniżej) nie rozmawia z API klastra, a członkowie zespołu dostają tylko odczyt (T11). Zakaz nie obejmuje komponentów platformy z kube-system (Cilium, Hubble, CoreDNS) ani chartów z T16 i T17: mają własne konta i RBAC. Alloy (T17) ma zamiast domyślnej ClusterRole chartu (m.in. odczyt secrets i configmaps w całym klastrze) Role `alloy` w shop, loadgen, aiops i intruder: get, list, watch na pods i events (`rbac` w `deploy/observability/values/alloy.yaml`); pilnują tego wiersze `sa:monitoring/alloy` w `test_permission_matrix`. Klaster nie odrzuca poda z tokenem API, więc złamanie zakazu wykrywa dopiero `tests/security/test_rbac.py` na działającym klastrze. Manifesty są w `deploy/base/rbac/`; `make deploy` stosuje je razem z aplikacjami.
 
 Każdy własny workload działa na własnym ServiceAccount o swojej nazwie, z `automountServiceAccountToken: false` i bez Role ani bindingów. Deployment podaje `serviceAccountName: <nazwa>` i powtarza `automountServiceAccountToken: false` w specyfikacji poda, bo ustawienie poda ma pierwszeństwo przed ustawieniem konta. W żadnym własnym podzie nie ma więc katalogu `/var/run/secrets/kubernetes.io/serviceaccount`.
 
@@ -201,6 +201,15 @@ W kube-system NetworkPolicy `hubble-relay-ui-ingress` (T03, `platform/cilium/hub
 
 Test: `tests/observability/test_metrics.py` (marker `observability`); na działającym klastrze `uv run --locked pytest tests/observability/test_metrics.py`. Sprawdza `up` = 1 dla frontend i orders, obecność `hubble_flows_processed_total` i skończoną wartość każdej reguły z tabeli dla obu usług przy ruchu z `fault-runner spike`.
 
+- **Logi i zdarzenia (T17).** Loki i Grafana Alloy w monitoring (`make observability`, krok `make up`; wartości w `deploy/observability/values/loki.yaml` i `alloy.yaml`):
+  - Loki (release `loki`): tryb SingleBinary (w chartcie `deploymentMode: Monolithic`), jeden pod `loki-0` z danymi w systemie plików na PVC 5 Gi, retencja 72 h (compactor), bez gatewaya, memcached i canary. Usługa `loki.monitoring.svc:3100` bez uwierzytelnienia (`auth_enabled: false`, jeden tenant): zapisuje Alloy (`/loki/api/v1/push`), czytają Grafana i anomaly-detector (T24).
+  - Logi (Alloy, release `alloy`, DaemonSet na workerach): pliki `/var/log/pods` podów z shop, loadgen, aiops i intruder z węzła danej instancji (hostPath `/var/log` tylko do odczytu). Etykiety strumienia: `namespace`, `pod`, `container`, `stream` (`stdout`, `stderr`) i `level`; `level` dostaje tylko wartość z kontraktu wyżej (`DEBUG`, `INFO`, `WARNING`, `ERROR`) z pola `level` linii JSON, bo każda inna wartość tworzyłaby nowy strumień (Loki ma jeden tenant i limit 5000 aktywnych strumieni). Linia spoza JSON albo z inną wartością `level` nie ma etykiety `level`; wartość zostaje w treści linii i jest wyszukiwalna przez `| json`. Loki sam dodaje do strumienia etykietę `service_name` (nie wpływa na zapytania z kryteriów). Logów z monitoring i kube-system Alloy nie zbiera.
+  - Zdarzenia Kubernetes z tych samych namespace'ów (`loki.source.kubernetes_events`, `log_format = "json"`): etykiety `job="loki.source.kubernetes_events"`, `namespace` (obiektu zdarzenia) i `instance`, linia JSON z polami m.in. `name`, `kind`, `reason`, `type`, `count`, `msg`, `sourcecomponent`, `sourcehost`; czas wpisu to ostatnie wystąpienie zdarzenia. Instancje Alloy tworzą klaster, więc każdy namespace czyta jedna z nich, a zdarzenie trafia do Lokiego raz.
+  - Grafana: źródło `Loki` (uid `loki`, `http://loki.monitoring.svc:3100`) z `grafana.additionalDataSources` w wartościach kube-prometheus-stack.
+  - Zapytania: `{namespace="shop", container="orders"} | json | level="ERROR"` (błędy orders), `{job="loki.source.kubernetes_events", namespace="shop"} | json | reason="BackOff"` (zdarzenia `BackOff`). Kubelet zapisuje `BackOff` dopiero przy drugim crashu kontenera w ciągu 10 min: po pierwszym restartuje od razu, potem czeka 10 s, 20 s, 40 s… (do 5 min).
+
+Test: `tests/observability/test_logs.py` (marker `observability`); na działającym klastrze `uv run --locked pytest tests/observability/test_logs.py`. Sprawdza źródło Loki w Grafanie (`/api/datasources/uid/loki/health`), logi `level="ERROR"` orders po `fault-runner fault errors` (zapytanie z kryterium T17 i etykieta `level`) oraz zdarzenie `BackOff` po dwóch `fault-runner fault crash`. Test restartuje orders dwa razy, jak S5, więc alert PodRestarts wysyła e-mail.
+
 - **Detektor (T24).**
 
 | Metryka | Typ | Znaczenie |
@@ -284,7 +293,7 @@ Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FA
 ├── .pre-commit-config.yaml # hook gitleaks przed commitem (T14)
 ├── .trivyignore           # wyjątki bramki Trivy: uzasadnienie i data przeglądu (T15)
 ├── mise.toml              # wersje narzędzi (T02)
-├── Makefile               # doctor (T02); cluster, hubble-ui, hubble-relay (T03); up, down, namespaces, secrets, images, deploy, status, urls, prometheus, alertmanager (T04); lint, unit, gitleaks, manifests (T06); trivy-config (T15); observability (T16); grafana-password (T14); test-security (T26); test, report (dalej)
+├── Makefile               # doctor (T02); cluster, hubble-ui, hubble-relay (T03); up, down, namespaces, secrets, images, deploy, status, urls, prometheus, alertmanager (T04); lint, unit, gitleaks, manifests (T06); trivy-config (T15); observability (T16, T17); grafana-password (T14); test-security (T26); test, report (dalej)
 ├── pyproject.toml         # uv workspace, Python 3.13 (T02)
 ├── platform/              # kind, Cilium, versions.env (T03, T04)
 ├── deploy/
@@ -299,7 +308,7 @@ Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FA
 │   └── orders/            # (T05, T08)
 ├── aiops/                 # pakiet aiops: cechy, model, detektor, ewaluacja (T20–T25, T30)
 ├── chaos/                 # fault-runner i run.py (T08, T21)
-├── tests/                 # security/, observability/, e2e/ (T11–T14, T16, T18, T26, T27)
+├── tests/                 # security/, observability/, e2e/ (T11–T14, T16–T18, T26, T27)
 ├── scripts/               # doctor.sh (T02), secrets.sh (T04, T14, T16), manifests.sh (T06), trivy.sh (T15) i skrypty pomocnicze
 ├── infra/                 # OpenTofu, rozszerzenie (T33)
 ├── reports/               # wyniki testów i przebiegów, poza git (T26–T31)

@@ -1,0 +1,163 @@
+# Wartości chartu Grafana Alloy (T17). Wersja i digest: ALLOY_* w platform/versions.env;
+# instalacja: make observability (krok make up), release alloy w namespace monitoring.
+# DaemonSet (domyślny controller chartu) na workerach kind: każdy pod czyta pliki /var/log/pods podów
+# ze swojego węzła, a zdarzenia Kubernetes czyta jedna instancja na namespace (clustering).
+# Kontrakt etykiet: docs/architektura.md, sekcja „Kontrakt metryk i logów”; dostęp do hosta: ryzyko R2
+# w docs/bezpieczenstwo.md.
+
+# CRD PodLogs (monitoring.grafana.com) służy tylko loki.source.podlogs, którego nie używamy; nowe CRD
+# trzeba by dopisać do sre-readonly (test_sre_reads_every_listable_resource_except_secrets).
+crds:
+  create: false
+
+alloy:
+  configMap:
+    # Chart przepuszcza treść przez tpl Helma: lista namespace'ów z logami pochodzi z rbac.namespaces (na dole pliku),
+    # więc discovery, zdarzenia i uprawnienia nie rozjadą się. Treść nie może zawierać innych znaczników szablonu Helma.
+    content: |
+      // Logi podów z plików węzła (wzorzec z dokumentacji Alloy „Collect Kubernetes logs”):
+      // discovery.kubernetes → __path__ z UID poda i nazwy kontenera → loki.source.file.
+      discovery.kubernetes "pods" {
+        role = "pod"
+
+        namespaces {
+          names = {{ .Values.rbac.namespaces | toJson }}
+        }
+
+        // Tylko pody z węzła tej instancji DaemonSetu; chart ustawia HOSTNAME na spec.nodeName.
+        selectors {
+          role  = "pod"
+          field = "spec.nodeName=" + coalesce(sys.env("HOSTNAME"), constants.hostname)
+        }
+      }
+
+      discovery.relabel "pods" {
+        targets = discovery.kubernetes.pods.targets
+
+        rule {
+          source_labels = ["__meta_kubernetes_namespace"]
+          target_label  = "namespace"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_name"]
+          target_label  = "pod"
+        }
+
+        rule {
+          source_labels = ["__meta_kubernetes_pod_container_name"]
+          target_label  = "container"
+        }
+
+        // /var/log/pods/<namespace>_<pod>_<uid>/<kontener>/<numer restartu>.log
+        rule {
+          source_labels = ["__meta_kubernetes_pod_uid", "__meta_kubernetes_pod_container_name"]
+          separator     = "/"
+          target_label  = "__path__"
+          replacement   = "/var/log/pods/*$1/*.log"
+        }
+      }
+
+      loki.source.file "pods" {
+        targets    = discovery.relabel.pods.output
+        forward_to = [loki.process.pods.receiver]
+
+        // Glob z __path__; nowe pliki (np. po restarcie kontenera) co 10 s.
+        file_match {
+          enabled = true
+        }
+      }
+
+      loki.process "pods" {
+        forward_to = [loki.write.default.receiver]
+
+        // Format CRI: czas wpisu, etykieta stream (stdout, stderr) i treść linii.
+        stage.cri {}
+
+        // Pole level linii JSON z kontraktu logów jako etykieta; linia spoza JSON zostaje bez level.
+        stage.json {
+          expressions = { level = "" }
+        }
+
+        // Etykieta tylko z wartości kontraktu; inna wartość (np. z przejętego poda) nie tworzy nowych strumieni.
+        // Niepasująca wartość nie dodaje contract_level, więc linia zostaje bez level; wartość nadal jest w treści (| json).
+        stage.regex {
+          source     = "level"
+          expression = "^(?P<contract_level>DEBUG|INFO|WARNING|ERROR)$"
+        }
+
+        stage.labels {
+          values = { level = "contract_level" }
+        }
+
+        // loki.source.file dodaje etykietę filename; strumień wyznaczają namespace, pod i container.
+        stage.label_drop {
+          values = ["filename"]
+        }
+      }
+
+      // Zdarzenia Kubernetes z tych samych namespace'ów jako linie JSON, job="loki.source.kubernetes_events".
+      // Z clusteringiem każdy namespace czyta jedna instancja, więc zdarzenie trafia do Lokiego raz.
+      loki.source.kubernetes_events "events" {
+        namespaces = {{ .Values.rbac.namespaces | toJson }}
+        log_format = "json"
+        forward_to = [loki.write.default.receiver]
+
+        clustering {
+          enabled = true
+        }
+      }
+
+      loki.write "default" {
+        endpoint {
+          url = "http://loki.monitoring.svc:3100/loki/api/v1/push"
+        }
+      }
+  # Instancje DaemonSetu tworzą klaster Alloy przez usługę alloy-cluster (port 12345).
+  # Port 12345 (klaster, UI, debug) bez TLS i uwierzytelnienia: ryzyko R1 w docs/bezpieczenstwo.md, ingress/TLS w T29.
+  clustering:
+    enabled: true
+  # Bez anonimowych statystyk użycia wysyłanych do Grafana Labs (--disable-reporting).
+  enableReporting: false
+  mounts:
+    # hostPath /var/log tylko do odczytu (readOnly w chartcie): logi podów w /var/log/pods.
+    varlog: true
+    # Jedyny zapisywalny katalog. Pozycje odczytu plików i zdarzeń są w storagePath /tmp/alloy (domyślna
+    # wartość chartu), więc po restarcie kontenera Alloy nie czyta plików od początku.
+    extra:
+      - name: tmp
+        mountPath: /tmp
+  # Obraz domyślnie działa jako root. /var/log/pods ma 0750 root:root, a pliki logów 0640 root:root,
+  # więc wystarcza grupa 0; 473 to użytkownik alloy z obrazu.
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 473
+    runAsGroup: 0
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: [ALL]
+    seccompProfile:
+      type: RuntimeDefault
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+
+controller:
+  volumes:
+    extra:
+      - name: tmp
+        emptyDir:
+          sizeLimit: 64Mi
+
+# Zamiast domyślnej ClusterRole chartu (m.in. odczyt secrets i configmaps w całym klastrze): Role i RoleBinding
+# alloy w każdym namespace'ie z logami, tylko pody (discovery.kubernetes) i zdarzenia (loki.source.kubernetes_events).
+rbac:
+  namespaces: [shop, loadgen, aiops, intruder]
+  rules:
+    - apiGroups: [""]
+      resources: [pods, events]
+      verbs: [get, list, watch]

@@ -60,6 +60,17 @@ DEVELOPER_DENIED = [
     ("patch", "deployments.apps"),
     ("create", "configmaps"),
 ]
+# Konto Alloy (T17): Role tylko w namespace'ach z logami
+# (deploy/observability/values/alloy.yaml).
+ALLOY = "sa:monitoring/alloy"
+ALLOY_NAMESPACES = ("shop", "loadgen", "aiops", "intruder")
+ALLOY_RULES = [
+    {
+        "apiGroups": [""],
+        "resources": ["pods", "events"],
+        "verbs": ["get", "list", "watch"],
+    }
+]
 
 # (kto, czasownik, zasób[/podzasób], namespace albo None = cały klaster, odpowiedź)
 MATRIX = [
@@ -98,6 +109,17 @@ MATRIX = [
         for namespace, name in SERVICE_ACCOUNTS
         for verb, resource in (("list", "secrets"), ("get", "pods"))
     ],
+    # Alloy (T17): pody i zdarzenia w namespace'ach z logami; bez secrets, configmaps
+    # i innych namespace'ów (domyślna ClusterRole chartu Alloy czyta secrets w klastrze)
+    *[
+        (ALLOY, verb, resource, namespace, True)
+        for namespace in ALLOY_NAMESPACES
+        for verb, resource in (("list", "pods"), ("watch", "events"))
+    ],
+    (ALLOY, "list", "secrets", "shop", False),
+    (ALLOY, "list", "secrets", None, False),
+    (ALLOY, "list", "configmaps", "shop", False),
+    (ALLOY, "list", "pods", "kube-system", False),
     # kontrola: użytkownik bez grupy zespołu
     ("bez-zespolu", "list", "pods", "shop", False),
 ]
@@ -196,6 +218,22 @@ def test_team_roles_are_read_only():
             assert {r for r in resources if "/" in r} <= {"pods/log"}, (name, rule)
             assert not rule.get("nonResourceURLs"), (name, rule)
             assert not rule.get("resourceNames"), (name, rule)
+
+
+def test_alloy_has_only_namespaced_read_rules():
+    # Jak wyżej: dowód z reguł roli, nie z próbek `can-i` (create, pods/exec albo
+    # inny zasób w Role oraz ClusterRoleBinding konta nie przejdą).
+    for namespace in ALLOY_NAMESPACES:
+        rules = get_json("role", "alloy", "-n", namespace)["rules"]
+        assert rules == ALLOY_RULES, (namespace, rules)
+    cluster_bindings = [
+        binding["metadata"]["name"]
+        for binding in get_json("clusterrolebindings")["items"]
+        for subject in binding.get("subjects") or []
+        if subject["kind"] == "ServiceAccount"
+        and (subject.get("namespace"), subject["name"]) == ("monitoring", "alloy")
+    ]
+    assert not cluster_bindings, cluster_bindings
 
 
 @pytest.mark.parametrize(("namespace", "name"), SERVICE_ACCOUNTS)
