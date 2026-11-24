@@ -1,6 +1,7 @@
 import asyncio
 import mmap
 import time
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -177,6 +178,15 @@ def test_cpu_fault_burns_cpu_until_stopped(client):
     cpu_before = time.process_time()
     time.sleep(0.3)
     assert time.process_time() - cpu_before < 0.1
+
+
+def test_cpu_fault_lasts_four_minutes_by_default(client):
+    # S1 z docs/architektura.md: 4 min, żeby HighCPU (`for: 2m`) zdążył wystrzelić.
+    started = client.post("/faults/cpu", headers=FAULT_AUTH)
+
+    assert started.status_code == 202
+    ends_at = datetime.fromisoformat(started.json()["ends_at"])
+    assert 235 <= (ends_at - datetime.now(UTC)).total_seconds() <= 240
 
 
 def test_memory_fault_needs_container_limit(client):
