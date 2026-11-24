@@ -4,13 +4,14 @@ Bezpieczna platforma Kubernetes z obserwowalnością AI — projekt zespołowy.
 
 Lokalny klaster kind z Cilium i Hubble, dwie usługi (frontend, orders), RBAC, NetworkPolicy, Pod Security, skan obrazów, metryki, logi i dashboardy oraz detekcja anomalii ML z alertami.
 
-**Status:** planowanie. Kod powstaje od Sprintu 1 (zadania T02–T05).
+**Status:** zamknięte 20 z 36 zadań (platforma, bezpieczeństwo, metryki, logi); w toku eksport cech dla detektora (T20). Szczegóły: [docs/backlog.md](docs/backlog.md).
 
 - Karta projektu: [docs/karta-projektu.md](docs/karta-projektu.md)
-- Architektura i kontrakty: [docs/architektura.md](docs/architektura.md)
+- Architektura i kontrakty (z diagramem): [docs/architektura.md](docs/architektura.md#diagram)
 - Model zagrożeń i macierz kontroli: [docs/bezpieczenstwo.md](docs/bezpieczenstwo.md)
 - Detekcja anomalii (metoda, próg, wyniki prototypu): [docs/detekcja.md](docs/detekcja.md)
 - Zadania: [Issues](https://github.com/l3x1cn/secure-k8s-aiops/issues), sprinty: [Milestones](https://github.com/l3x1cn/secure-k8s-aiops/milestones)
+- Backlog (migawka Issues według sprintów): [docs/backlog.md](docs/backlog.md)
 - Tablica: [GitHub Project](https://github.com/users/l3x1cn/projects/1)
 
 ## Wymagania

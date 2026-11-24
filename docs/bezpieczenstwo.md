@@ -1,6 +1,6 @@
 # Model zagrożeń i macierz kontroli
 
-Dokument opisuje, przed czym broni się platforma, jakimi kontrolami i jakim testem automatycznym każdą z nich sprawdzamy (T07). Stan na 10.11.2026 (`main` po T13). Kolumna „Stan” mówi, czy test już działa w `main`, czy dopiero dojdzie w podanym zadaniu.
+Dokument opisuje, przed czym broni się platforma, jakimi kontrolami i jakim testem automatycznym każdą z nich sprawdzamy (T07). Stan na 24.11.2026 (`main` po T17 i T26; T20 w PR #67, nie zmienia macierzy). Kolumna „Stan” mówi, czy test już działa w `main`, czy dopiero dojdzie w podanym zadaniu: otwarte pozostają wiersze T27 (alert end-to-end) i T30 (ewaluacja detekcji).
 
 Zadanie, które dodaje zasób, przepływ sieciowy, sekret, obraz albo uprawnienie, aktualizuje macierz w tym samym PR. Zaakceptowane ryzyko dopisuje się do „Ryzyk szczątkowych” z uzasadnieniem i warunkiem powrotu do tematu.
 

@@ -2,6 +2,62 @@
 
 Ten dokument to wspólny kontrakt dla zadań T01–T36. Zmiana kontraktu wymaga PR, który aktualizuje ten plik i opis zadań, których dotyczy.
 
+## Diagram
+
+Stan na 24.11.2026 (`main` po T17 i T26, T20 w PR #67). Węzły z przerywaną ramką to elementy jeszcze niewdrożone: detektor (T24) i eksport cech (T20). Szczegóły przepływów, portów i alertów są w sekcjach niżej, granice zaufania w [modelu zagrożeń](bezpieczenstwo.md#aktorzy).
+
+```mermaid
+flowchart LR
+    team["Zespół"] -->|"PR"| ci["GitHub Actions: lint, unit, gitleaks, manifests + Trivy, images"]
+    ci -->|"push z main po bramce Trivy"| ghcr[("GHCR")]
+    user["Użytkownik / przeglądarka"]
+    feat["eksport cech do Parquet (T20)"]
+
+    subgraph kind["Klaster kind (3 węzły) · Cilium + Hubble · Kubernetes 1.36"]
+        subgraph shop["ns shop · PSA restricted · default-deny"]
+            fe["frontend"] -->|"Bearer token :8080"| ord["orders"]
+        end
+        subgraph loadgen["ns loadgen · PSA restricted · default-deny"]
+            locust["locust"]
+            fr["fault-runner"]
+        end
+        subgraph intruder["ns intruder"]
+            intr["intruder (curl)"]
+        end
+        subgraph aiops["ns aiops · PSA restricted · default-deny"]
+            det["anomaly-detector (IsolationForest, T24)"]
+        end
+        subgraph monitoring["ns monitoring"]
+            prom["Prometheus"] -->|"alerty"| am["Alertmanager"] -->|"SMTP :1025"| mail["Mailpit"]
+            alloy["Alloy (DaemonSet)"] -->|"logi, zdarzenia K8s"| loki["Loki"]
+            graf["Grafana"]
+        end
+        subgraph ksys["ns kube-system"]
+            hubble["Cilium + Hubble"]
+        end
+    end
+
+    user -->|"localhost:8080 (NodePort 30080)"| fe
+    team -->|"localhost:3000"| graf
+    team -->|"localhost:8025"| mail
+    locust -->|"ruch"| fe
+    fr -->|"X-Fault-Token: awarie /faults/*"| ord
+    fr -->|"skok ruchu"| fe
+    intr -.->|"POLICY_DENIED"| ord
+    prom -->|"scrape /metrics :8080"| fe
+    prom -->|"scrape /metrics :8080"| ord
+    hubble -->|"hubble_drop_total"| prom
+    prom -->|"cechy (zapytania, :9090)"| det
+    loki -->|"zdarzenia Warning (:3100)"| det
+    det -->|"aiops_anomaly"| prom
+    graf --> prom
+    graf --> loki
+    feat -.->|"query_range"| prom
+
+    classDef planned stroke-dasharray: 5 5
+    class det,feat planned
+```
+
 ## Komponenty i wersje
 
 | Komponent | Wersja | Namespace | Zadanie |
