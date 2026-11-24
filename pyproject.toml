@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Bezpieczna platforma Kubernetes z obserwowalnością AI"
 requires-python = "==3.13.*"
 # Pakiety workspace'u jako zależności korzenia: `uv sync` instaluje je do .venv.
-dependencies = ["chaos", "frontend", "orders"]
+dependencies = ["aiops", "chaos", "frontend", "orders"]
 
 [tool.uv]
 # Katalog główny to korzeń workspace'u, nie pakiet.
@@ -12,36 +12,35 @@ package = false
 
 [tool.uv.workspace]
 # Zadanie, które tworzy pakiet Pythona (np. services/frontend w T05, chaos w T08,
-# aiops w T20), dopisuje tu jego katalog razem z jego pyproject.toml,
-# a nazwę pakietu do ignore w .github/dependabot.yml.
+# aiops w T20), dopisuje tu jego katalog razem z jego pyproject.toml, linię
+# `COPY <katalog>/pyproject.toml <katalog>/` w każdym Dockerfile przed `uv sync --frozen`
+# i nazwę pakietu do ignore w .github/dependabot.yml.
 # Katalog z tej listy bez pyproject.toml przerywa `uv sync`.
-members = ["chaos", "libs/observability", "services/frontend", "services/orders"]
+members = ["aiops", "chaos", "libs/observability", "services/frontend", "services/orders"]
 
 [tool.uv.sources]
+aiops = { workspace = true }
 chaos = { workspace = true }
 frontend = { workspace = true }
 orders = { workspace = true }
 
 [dependency-groups]
-# Notebooki aiops/notebooks (T09): `uv run jupyter nbconvert --to notebook --execute <plik>`.
-# numpy/pandas/scikit-learn przejdą do zależności pakietu aiops w T20.
+# Notebooki aiops/notebooks (T09, T20): `uv run jupyter nbconvert --to notebook --execute <plik>`.
+# numpy, pandas i scikit-learn (notebooki, tests/observability/test_traffic.py) daje pakiet aiops (T20).
 dev = [
     "httpx2>=2.16.0",
     "ipykernel>=7.4.0",
     "matplotlib>=3.11.2",
     "nbconvert>=7.17.2",
-    "numpy>=2.5.4",
-    "pandas>=3.1.0",
     "pytest>=9.1.1",
     "pytest-html>=4.2.0",
     "pyyaml>=6.0.3",
-    "scikit-learn>=1.9.1",
 ]
 
 [tool.pytest.ini_options]
 # Testy jednostkowe bez klastra (`make unit`, job unit w CI). Testy wymagające klastra
 # trafiają do tests/ (T11–T14, T26, T27), który nie należy do testpaths.
-testpaths = ["chaos", "libs", "services"]
+testpaths = ["aiops", "chaos", "libs", "services"]
 # Usługi mają osobne katalogi tests/ z plikami o tych samych nazwach (--import-mode=importlib).
 # --strict-markers: literówka w markerze to błąd zbierania, a nie test po cichu pominięty przez `-m security`.
 addopts = ["--import-mode=importlib", "--strict-markers"]

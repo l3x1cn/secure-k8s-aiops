@@ -31,7 +31,7 @@ Obrazy dostawców w przypiętych wersjach (Cilium 1.20.3 z Envoy i Hubble UI, `k
 
 ## Obrazy
 
-Obrazy budowane w projekcie nazywają się `ghcr.io/l3x1cn/secure-k8s-aiops/<nazwa>` (`IMAGE_REPO` w `Makefile`) i powstają z korzenia repozytorium (workspace uv): `docker build -f <Dockerfile> .`. Manifesty w `deploy/base` podają obraz bez tagu, a tag ustawia overlay.
+Obrazy budowane w projekcie nazywają się `ghcr.io/l3x1cn/secure-k8s-aiops/<nazwa>` (`IMAGE_REPO` w `Makefile`) i powstają z korzenia repozytorium (workspace uv): `docker build -f <Dockerfile> .`. Manifesty w `deploy/base` podają obraz bez tagu, a tag ustawia overlay. Każdy Dockerfile kopiuje przed `uv sync --frozen` plik `pyproject.toml` każdego członka workspace'u, więc nowy pakiet workspace'u (np. `aiops`, T20) dopisuje linię `COPY` we wszystkich Dockerfile'ach.
 
 | Obraz | Dockerfile | Zadanie |
 |---|---|---|
@@ -210,6 +210,17 @@ Test: `tests/observability/test_metrics.py` (marker `observability`); na działa
 
 Test: `tests/observability/test_logs.py` (marker `observability`); na działającym klastrze `uv run --locked pytest tests/observability/test_logs.py`. Sprawdza źródło Loki w Grafanie (`/api/datasources/uid/loki/health`), logi `level="ERROR"` orders po `fault-runner fault errors` (zapytanie z kryterium T17 i etykieta `level`) oraz zdarzenie `BackOff` po dwóch `fault-runner fault crash`. Test restartuje orders dwa razy, jak S5, więc alert PodRestarts wysyła e-mail.
 
+- **Cechy ML (T20).** Pakiet `aiops` (`aiops/src/aiops/`): `aiops.prometheus.PrometheusClient(url)` pyta `GET /api/v1/query_range` (z hosta `http://localhost:9090` przez `make prometheus`, w klastrze `http://prometheus-operated.monitoring.svc:9090`), a `aiops.features.fetch_features(client, start, end)` (czasy ze strefą) zwraca ramkę wspólną dla eksportu, treningu (T23) i detektora (T24):
+  - indeks `MultiIndex` (`service`, `timestamp`): `service` ∈ {frontend, orders}, `timestamp` w UTC co 30 s od `start` do `end` (ułamki sekund obcięte), pełna siatka kroków dla każdej usługi;
+  - 9 kolumn float64 w kolejności tabeli reguł; kolumna to nazwa reguły bez `service:` z `:` zamienionym na `_` (np. `network_rx_bytes_rate1m`, `http_latency_p95_seconds_1m`), jak w `aiops/notebooks/01-prototyp.ipynb`;
+  - wartość w kroku t to ostatnia ewaluacja reguły w (t − 30 s, t]: `last_over_time(<reguła>{namespace="shop"}[30s])`. Brak ewaluacji (np. restart Prometheusa) daje NaN, a nie wartość sprzed kilku minut z 5-minutowego lookbacku, poza trzema cechami `http_*`, w których każda brakująca wartość (brak serii, NaN, brak ewaluacji) to 0, więc lukę widać w pozostałych cechach;
+  - `http_requests_rate1m`, `http_errors_ratio_rate1m` i `http_latency_p95_seconds_1m` bez serii (przed pierwszym żądaniem usługi) albo z NaN (bez ruchu) mają 0;
+  - luka to kolejne kroki z NaN w którejkolwiek cesze; `aiops.features.max_gap_seconds(frame)` podaje najdłuższą lukę każdej usługi w sekundach.
+
+  Eksport: `uv run python -m aiops.export --from <ISO> --to <ISO> --out aiops/data/<nazwa>.parquet [--prometheus-url <URL>]` (czasy ISO 8601 ze strefą). Zapisuje ramkę do Parquet (pyarrow; `pd.read_parquet` przywraca indeks) i wypisuje JSON z polami `out`, `from`, `to`, `rows`, `features`, `max_gap_seconds`. Błąd Prometheusa albo brak połączenia: kod 1 bez pliku. EDA ruchu bazowego: `aiops/notebooks/02-eda.ipynb`.
+
+Test: `aiops/tests` (bez klastra, `make unit`) na odpowiedziach `query_range` nagranych przez `aiops/tests/fixtures/record.py` do `aiops/tests/fixtures/query_range.json`; zmiana zapytania wymaga nowego nagrania. Sprawdza siatkę, kolumny i wartości ramki, zera bez ruchu, luki, plik Parquet, podsumowanie JSON i błędy CLI.
+
 - **Detektor (T24).**
 
 | Metryka | Typ | Znaczenie |
@@ -306,7 +317,7 @@ Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FA
 ├── services/              # obrazy budowane z korzenia: docker build -f services/<nazwa>/Dockerfile .
 │   ├── frontend/          # (T05)
 │   └── orders/            # (T05, T08)
-├── aiops/                 # pakiet aiops: cechy, model, detektor, ewaluacja (T20–T25, T30)
+├── aiops/                 # pakiet aiops: cechy, model, detektor, ewaluacja (T20–T25, T30); notebooks/ (T09, T20); data/ poza git (T20)
 ├── chaos/                 # fault-runner i run.py (T08, T21)
 ├── tests/                 # security/, observability/, e2e/ (T11–T14, T16–T18, T26, T27)
 ├── scripts/               # doctor.sh (T02), secrets.sh (T04, T14, T16), manifests.sh (T06), trivy.sh (T15) i skrypty pomocnicze

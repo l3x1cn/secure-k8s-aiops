@@ -13,6 +13,7 @@ WORKDIR /src
 # Najpierw same zależności: ta warstwa zmienia się tylko razem z uv.lock.
 COPY pyproject.toml uv.lock ./
 # Każdy członek workspace'u z pyproject.toml w korzeniu, inaczej `uv sync --frozen` się przerywa.
+COPY aiops/pyproject.toml aiops/
 COPY chaos/pyproject.toml chaos/
 COPY libs/observability/pyproject.toml libs/observability/
 COPY services/frontend/pyproject.toml services/frontend/

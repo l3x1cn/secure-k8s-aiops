@@ -132,6 +132,18 @@ Grafana Alloy (DaemonSet w monitoring) wysyła do Lokiego logi kontenerów i zda
 - `{namespace="shop", container="orders"} | json | level="ERROR"`: błędy orders, np. po S3 (`fault errors`);
 - `{job="loki.source.kubernetes_events", namespace="shop"} | json | type="Warning"`: zdarzenia Warning, np. `BackOff` po drugim `fault crash` w ciągu 10 min.
 
+### Dane i cechy (aiops)
+
+Pakiet `aiops` pobiera z Prometheusa 9 cech z reguł nagrywających `service:*` dla `frontend` i `orders` co 30 s i zapisuje je do Parquet w `aiops/data/` (poza git). Kontrakt ramki: [docs/architektura.md](docs/architektura.md#kontrakt-metryk-i-logów).
+
+```bash
+make prometheus   # drugi terminal: Prometheus na localhost:9090
+uv run python -m aiops.export --from 2026-11-23T08:00:00Z --to 2026-11-23T10:00:00Z --out aiops/data/baseline.parquet
+uv run jupyter nbconvert --to notebook --execute --inplace aiops/notebooks/02-eda.ipynb   # EDA (T20) na aiops/data/baseline.parquet, co najmniej 2 h ruchu
+```
+
+Eksport wypisuje JSON z zakresem, liczbą kroków na usługę, liczbą cech i najdłuższą luką (`max_gap_seconds`, w sekundach). Bez ruchu HTTP cechy `http_*` mają 0, a brak ewaluacji pozostałych reguł to NaN. Inny adres Prometheusa: `--prometheus-url`. Testy pakietu (`aiops/tests`, nagrane odpowiedzi Prometheusa) uruchamia `make unit`.
+
 ## Jak pracujemy
 
 - Każde zadanie to issue `Txx`. Gałąź `txx-krotki-opis`, PR z `Closes #N`.
