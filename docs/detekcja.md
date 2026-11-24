@@ -10,7 +10,7 @@ Decyzja z prototypu na danych syntetycznych (T09, [`aiops/notebooks/01-prototyp.
 
 ## Jak to sprawdziliśmy
 
-- 20 przebiegów, w każdym 30 min rozgrzewki i S1–S7 w losowej kolejności co 10 min (`--gap` z T21). Razem ok. 33 h ruchu po rozgrzewce.
+- 20 przebiegów, w każdym 30 min rozgrzewki i S1–S7 w losowej kolejności, z przerwą 10 min przed każdym scenariuszem i po ostatnim (`--gap` z T21). Razem ok. 33 h ruchu po rozgrzewce.
 - 9 cech z tabeli reguł nagrywających dla `frontend` i `orders`, krok 30 s:
   - ruch jak w T18: 10 ± 8 użytkowników, sinusoida o okresie 30 min;
   - poziomy bazowe z pomiarów T05/T08;
@@ -77,5 +77,5 @@ Dla każdej cechy z = (x − średnia) / odchylenie z poprzednich 30 min, a wyni
 
 ## Ryzyka dla innych zadań
 
-- **S1 i HighCPU (T19, T21).** S1 trwa 2 min, a `HighCPU` ma `for: 2m`. Warunek musi być spełniony w 5 kolejnych ewaluacjach co 30 s, więc alert zdąży wystrzelić tylko wtedy, gdy `rate` CPU utrzyma wysoki poziom po końcu awarii. W prototypie reguły nie wykryły S1 ani razu. Trzeba wydłużyć S1 do 3 min albo skrócić `for` alertu `HighCPU`.
+- **S1 i HighCPU (T19, T21).** W prototypie S1 trwał 2 min i reguły nie wykryły go ani razu: `HighCPU` ma `for: 2m`, więc warunek musi być spełniony w 5 kolejnych ewaluacjach co 30 s (120–150 s zależnie od fazy ewaluacji). Przy pełnym obciążeniu `service:cpu_usage_ratio_of_limit` (rate z 1 min) przekracza 0,8 od ok. 48 s po starcie awarii do ok. 12 s po jej końcu, czyli przez czas awarii minus 36 s. T21 wydłużył S1 do 4 min (204 s powyżej progu); przy 3 min (144 s) alert wystrzeliłby tylko w ok. 80% przebiegów.
 - **Dane są syntetyczne.** Skutki scenariuszy i szum wynikają z założeń prototypu. Rozkłady, korelacje i sezonowość ruchu bazowego z klastra pokazuje [`aiops/notebooks/02-eda.ipynb`](../aiops/notebooks/02-eda.ipynb) (T20); różnice co najmniej 2× względem założeń prototypu (prototyp → klaster): CPU/limit, wyraz wolny (frontend): 0,04 → 0,0028; CPU/limit na 1 żądanie/s (frontend): 0,009 → 0,0028; B wysłane na żądanie, mediana (frontend): 1600 → 759; p95 (s), wyraz wolny (frontend): 0,03 → 0,0048; p95 (s) na 1 żądanie/s (frontend): 0,0008 → −1,1e-06; udział 5xx, średnia (frontend): 0,001 → 0; CPU/limit, wyraz wolny (orders): 0,03 → 0,0026; CPU/limit na 1 żądanie/s (orders): 0,01 → 0,0026; p95 (s), wyraz wolny (orders): 0,012 → 0,0048; p95 (s) na 1 żądanie/s (orders): 0,0004 → 3,0e-07; udział 5xx, średnia (orders): 0,001 → 0. Liczby detekcji z klastra da T30.

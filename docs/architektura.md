@@ -339,18 +339,46 @@ Wszystkie endpointy `/faults/*` należą do `orders`, są aktywne tylko przy `FA
 - Odpowiedź: 202 i `{"fault": "<nazwa>", "ends_at": "<czas UTC>"}`; `stop` zwraca 200 i `{"stopped": "<nazwa>"}` albo `null`.
 - `errors` (`ratio` ∈ (0, 1]) i `latency` (`ms` ∈ [1, 10000]) działają na trasach `/orders`. Odsetek błędów jest deterministyczny: przy `ratio=0.5` co druga odpowiedź to 500.
 - `memory` (`target_ratio` ∈ (0, 0.95]) zajmuje `target_ratio × memory.max − memory.current` z cgroup v2; bez limitu pamięci kontenera zwraca 409.
-- `crash` kończy proces kodem 1 zaraz po wysłaniu odpowiedzi 202; powtórzenia S5 planuje orkiestrator (T21).
+- `crash` kończy proces kodem 1 zaraz po wysłaniu odpowiedzi 202; trzy crashe S5 (0, 60 i 120 s od początku okna) wysyła orkiestrator `chaos/run.py` (T21).
 - Klient: `fault-runner fault <nazwa> [--seconds N] [--param k=v]`, `fault-runner stop`, `fault-runner spike --users N --seconds S` w podzie `loadgen/fault-runner` (`kubectl exec`).
 
 | ID | Nazwa | Cel | Mechanizm | Czas | Oczekiwane alerty |
 |---|---|---|---|---|---|
-| S1 | cpu | orders | `POST /faults/cpu?seconds=120`: pętla obciążająca CPU | 2 min | HighCPU, AnomalyDetected |
+| S1 | cpu | orders | `POST /faults/cpu?seconds=240`: pętla obciążająca CPU | 4 min | HighCPU, AnomalyDetected |
 | S2 | memory | orders | `POST /faults/memory?seconds=180&target_ratio=0.9`: alokacja do 90% limitu pamięci (odczyt z cgroup) | 3 min | HighMemory, AnomalyDetected |
 | S3 | errors | orders | `POST /faults/errors?seconds=180&ratio=0.5`: 50% odpowiedzi 500 | 3 min | HighErrorRate, AnomalyDetected, IncidentConfirmed |
 | S4 | latency | orders | `POST /faults/latency?seconds=180&ms=500` | 3 min | HighLatency, AnomalyDetected |
 | S5 | crash | orders | `POST /faults/crash` 3 razy co 60 s | 3 min | PodRestarts, AnomalyDetected |
 | S6 | spike | frontend | `fault-runner spike --users 50 --seconds 180` | 3 min | AnomalyDetected (reguły nie mają progu na skok ruchu) |
-| S7 | scan | orders | intruder: `curl -m 1` na orders:8080 oraz porty 22, 80, 443, 5432 i 6379, co 1 s | 2 min | PolicyDeniedConnections, AnomalyDetected |
+| S7 | scan | orders | intruder: `curl -m 1` na IP poda orders, porty 8080, 22, 80, 443, 5432 i 6379 naraz, co 1 s | 2 min | PolicyDeniedConnections, AnomalyDetected |
+
+S1 trwa 4 min, bo `HighCPU` (`for: 2m`) potrzebuje 5 kolejnych ewaluacji powyżej progu, a `service:cpu_usage_ratio_of_limit` (rate z 1 min) przekracza 0,8 przez czas awarii minus ok. 36 s ([docs/detekcja.md](detekcja.md#ryzyka-dla-innych-zadań)). S7 celuje w IP poda, bo usługa `orders` wystawia tylko port 8080: odrzucenie `POLICY_DENIED` po stronie orders daje tylko połączenie, które dociera do poda.
+
+**Orkiestrator (T21).** `uv run --locked python chaos/run.py [--scenarios S1,…,S7] [--gap 10m] [--run-id <id>]` na hoście (kubectl z `mise.toml`, kontekst ze zmiennej `KUBE_CONTEXT`, domyślnie `kind-secure-k8s-aiops`; Grafana pod http://localhost:3000):
+- `--scenarios` wykonuje się w podanej kolejności (domyślnie S1–S7). `--gap` (`<N>s` albo `<N>m`, domyślnie `10m`) to przerwa przed każdym scenariuszem i po ostatnim, jak w `aiops/notebooks/01-prototyp.ipynb`; S1–S7 z `--gap 10m` trwa 101 min. `--run-id` (litery, cyfry, `.`, `_`, `-`; domyślnie czas startu UTC, np. `20261124T100000Z`) to nowy katalog `reports/runs/<run-id>/` (poza git). Nieznany albo powtórzony scenariusz, zły format i istniejący katalog: kod 2 bez poleceń w klastrze.
+- S1–S4 to jedno `fault-runner fault <nazwa>` z `--seconds` i `--param` z tabeli, a S5 to `fault-runner fault crash` po 0, 60 i 120 s. Każde `fault-runner fault` ma do 5 prób co 2 s, bo po restarcie orders usługa dostaje endpoint z opóźnieniem. S6 uruchamia `fault-runner spike` przez `sh -c` z PID-em w `/tmp/chaos-s6.pid`, a S7 pętlę `sh` w intruderze z PID-em w `/tmp/chaos-s7.pid`; IP poda orders daje `kubectl get pods -n shop -l app.kubernetes.io/name=orders`.
+- Okno zaczyna się tuż przed pierwszym poleceniem scenariusza i kończy po czasie z tabeli; S6 i S7 kończą się razem z poleceniem w podzie (1–3 s później). Czasy w UTC, co do sekundy.
+- `labels.jsonl`: jedna linia JSON na zamknięte okno, dopisywana od razu; plik powstaje pusty na starcie przebiegu. `target` to usługa, której alerty liczą się jako wykrycie (T30):
+
+```json
+{"scenario": "S1", "name": "cpu", "target": "orders", "start": "2026-11-24T10:10:00+00:00", "end": "2026-11-24T10:14:00+00:00"}
+```
+
+- `run.json`: `{"commit": "<SHA HEAD>", "start": "<ISO 8601>", "end": "<ISO 8601>"}`; w trakcie przebiegu `end` ma wartość `null`.
+- Adnotacje: po zamknięciu okna `POST /api/annotations` kontem z Secretu `grafana-admin`, z `time` i `timeEnd` okna (ms), `tags: ["scenario", "<ID>"]` i tekstem `<ID> <nazwa> → <cel>, przebieg <run-id>`. Bez `dashboardUID` adnotacja należy do całej organizacji, więc dashboard pokazuje ją zapytaniem adnotacji po tagu (T22, wpis w `annotations.list` dashboardu):
+
+```json
+{
+  "name": "Scenariusze",
+  "datasource": {"type": "grafana", "uid": "-- Grafana --"},
+  "enable": true,
+  "iconColor": "red",
+  "target": {"type": "tags", "tags": ["scenario"], "matchAny": false, "limit": 100}
+}
+```
+
+- Przed pierwszym scenariuszem orkiestrator czyta Secret `grafana-admin`, sprawdza `GET /api/org` i commit (`git rev-parse HEAD`); błąd: kod 1 bez katalogu przebiegu. Nieudana adnotacja w trakcie przebiegu to tylko ostrzeżenie na stderr.
+- Ctrl+C: w S6 i S7 `kill` PID-u z pliku w podzie, zawsze `fault-runner stop`, zamknięcie bieżącego okna (linia w `labels.jsonl` i adnotacja), `end` w `run.json`, kod 130. Polecenie scenariusza, które zawiedzie po wszystkich próbach, kończy przebieg tym samym sprzątaniem i kodem 1.
 
 ## Struktura repozytorium
 
