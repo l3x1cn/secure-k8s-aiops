@@ -89,6 +89,37 @@ def test_prometheus_error_is_reported_without_file(window, tmp_path, capsys):
     assert not out.exists()
 
 
+@pytest.mark.parametrize(
+    ("response", "expected"),
+    [
+        (httpx.Response(502, text="<html>Bad Gateway</html>"), ["502", "Bad Gateway"]),
+        (httpx.Response(401, json={"error": "unauthorized"}), ["401", "unauthorized"]),
+        (httpx.Response(200, json=["not", "an", "object"]), ["200", '["not"']),
+    ],
+    ids=["body-not-json", "error-without-error-type", "json-not-object"],
+)
+def test_unusual_error_response_is_reported_without_file(
+    window, tmp_path, capsys, response, expected
+):
+    start, end = window
+    out = tmp_path / "baseline.parquet"
+
+    code = run(
+        lambda request: response,
+        "--from",
+        start.isoformat(),
+        "--to",
+        end.isoformat(),
+        "--out",
+        str(out),
+    )
+
+    assert code == 1
+    err = capsys.readouterr().err
+    assert all(part in err for part in expected)
+    assert not out.exists()
+
+
 def test_unreachable_prometheus_exits_with_error(window, tmp_path, capsys):
     def refuse(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("Connection refused", request=request)

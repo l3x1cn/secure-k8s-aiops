@@ -11,12 +11,17 @@ Skanery: gitleaks i trufflehog (brak wycieków), Semgrep i Bandit (trafienia odr
 ## Findings
 
 ### [MEDIUM] DOC-001: Kontrakt mówi, że brak ewaluacji reguły daje NaN, ale trzy cechy `http_*` dostają wtedy 0 [verified]
+**Status:** ✅ Fixed (2026-11-24)
+
 
 **ID:** DOC-001
 **Location:** `docs/architektura.md:216` (to samo twierdzenie w `README.md:145`)
 **Category:** Documentation
 **Drift-class:** decision
 **Fix-policy:** needs-decision
+**Decision:** A — in docs/architektura.md line 216 (the bullet starting "wartość w kroku t to ostatnia ewaluacja reguły") replace the sentence "Brak ewaluacji (np. restart Prometheusa) daje NaN, a nie wartość sprzed kilku minut z 5-minutowego lookbacku" with one saying that a missed evaluation gives NaN rather than a value from the 5-minute lookback, except in the three http_* features, where every missing value (no series, NaN, missed evaluation) is 0 so the gap shows in the other features, and in README.md line 145 replace "brak ewaluacji reguły to NaN" with "brak ewaluacji pozostałych reguł to NaN"; change no code or test [user, 2026-11-24]
+**Verification-plan:** grep -n "poza trzema cechami" docs/architektura.md → one match on the line that also contains "lookbacku"; grep -c "brak ewaluacji reguły to NaN" README.md → 0; grep -c "brak ewaluacji pozostałych reguł to NaN" README.md → 1
+**Verification:** hard — grep -n "poza trzema cechami" docs/architektura.md matched line 216 together with "lookbacku"; grep -c "brak ewaluacji reguły to NaN" README.md returned 0; grep -c "brak ewaluacji pozostałych reguł to NaN" README.md returned 1
 
 **Problem:**
 `docs/architektura.md:216` mówi dla każdej cechy: „Brak ewaluacji (np. restart Prometheusa) daje NaN”, a `README.md:145`: „brak ewaluacji reguły to NaN”. W kodzie krok bez próbki staje się NaN przy wyrównaniu do siatki (`aiops/src/aiops/features.py:69-77`), po czym linia 78 (`frame[ZERO_WITHOUT_TRAFFIC] = frame[ZERO_WITHOUT_TRAFFIC].fillna(0.0)`) wpisuje 0 w `http_requests_rate1m`, `http_errors_ratio_rate1m` i `http_latency_p95_seconds_1m` bez względu na przyczynę. `docs/architektura.md:217` podaje tylko dwa powody zera: brak serii przed pierwszym żądaniem i NaN bez ruchu. Docstring funkcji (`features.py:55-56`: „Brak ewaluacji reguły to NaN, poza ZERO_WITHOUT_TRAFFIC”) jest zgodny z kodem; rozjazd dotyczy dokumentacji. Odtworzone na nagraniu: po usunięciu kroków 5–7 każdej reguły frontendu `cpu_usage_ratio_of_limit` jest NaN, a trzy kolumny `http_*` mają 0; `max_gap_seconds` zwraca `{'frontend': 90, 'orders': 0}`.
@@ -32,6 +37,8 @@ Najpierw decyzja, co ma się zmienić.
 ---
 
 ### [LOW] MAINT-001: Treść błędu bez `errorType` albo niebędąca obiektem JSON kończy `PrometheusError` wyjątkiem `KeyError` lub `AttributeError` [verified]
+**Status:** ✅ Fixed (2026-11-23)
+
 
 **ID:** MAINT-001
 **Location:** `aiops/src/aiops/prometheus.py:61`
@@ -77,6 +84,8 @@ CLI nadal kończy się kodem 1 bez pliku (wyjątek leci przed `to_parquet`, `exp
 ---
 
 ### [LOW] MAINT-002: Zadeklarowane ścieżki błędów nie mają testów: `ValueError` dla czasu bez strefy, treść błędu niebędąca JSON-em i brak próbki w środku serii `http_*` [verified]
+**Status:** ✅ Fixed (2026-11-23)
+
 
 **ID:** MAINT-002
 **Location:** `aiops/tests/test_features.py:50`

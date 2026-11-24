@@ -94,3 +94,40 @@ def test_missing_evaluations_are_gaps(prometheus, window, missing, gap):
     )
     assert list(cpu[cpu.isna()].index) == list(expected)
     assert max_gap_seconds(frame) == {"frontend": 0, "orders": gap}
+
+
+@pytest.mark.parametrize("naive", ["start", "end"])
+def test_naive_times_are_rejected_before_any_request(window, naive):
+    def unexpected(request: httpx.Request) -> httpx.Response:
+        pytest.fail(f"unexpected request {request.url}")
+
+    start, end = window
+    if naive == "start":
+        start = start.replace(tzinfo=None)
+    else:
+        end = end.replace(tzinfo=None)
+    transport = httpx.MockTransport(unexpected)
+    with PrometheusClient("http://prometheus:9090", transport=transport) as client:
+        with pytest.raises(ValueError, match="timezone-aware"):
+            fetch_features(client, start, end)
+
+
+def test_missing_evaluation_inside_http_series_is_filled_with_zero(prometheus, window):
+    # Brak ewaluacji reguł w krokach 5–6: próbek brakuje w każdej serii orders, jak po
+    # restarcie Prometheusa. Brakująca próbka http_* to 0 (docs/architektura.md, cechy ML).
+    dropped = {5, 6}
+    for rule in CONTRACT:
+        series = prometheus.series(rule, "orders")
+        samples = series["values"]
+        series["values"] = [s for k, s in enumerate(samples) if k not in dropped]
+    timestamps = pd.to_datetime(
+        [samples[k][0] for k in sorted(dropped)], unit="s", utc=True
+    )
+
+    frame = fetch(prometheus, window)
+
+    orders = frame.xs("orders", level="service")
+    assert (orders.loc[timestamps, HTTP_COLUMNS] == 0).all().all()
+    other = [column for column in orders.columns if column not in HTTP_COLUMNS]
+    assert orders.loc[timestamps, other].isna().all().all()
+    assert max_gap_seconds(frame) == {"frontend": 0, "orders": 60}

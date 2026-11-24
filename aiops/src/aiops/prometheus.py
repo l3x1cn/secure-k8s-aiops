@@ -62,9 +62,11 @@ class PrometheusClient:
             body = response.json()
         except ValueError:
             body = {}
+        if not isinstance(body, dict):
+            body = {}
         if response.is_error or body.get("status") != "success":
             detail = (
-                f"{body['errorType']}: {body['error']}"
+                f"{body.get('errorType', 'error')}: {body['error']}"
                 if "error" in body
                 else response.text
             )

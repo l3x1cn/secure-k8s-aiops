@@ -142,7 +142,7 @@ uv run python -m aiops.export --from 2026-11-23T08:00:00Z --to 2026-11-23T10:00:
 uv run jupyter nbconvert --to notebook --execute --inplace aiops/notebooks/02-eda.ipynb   # EDA (T20) na aiops/data/baseline.parquet, co najmniej 2 h ruchu
 ```
 
-Eksport wypisuje JSON z zakresem, liczbą kroków na usługę, liczbą cech i najdłuższą luką (`max_gap_seconds`, w sekundach). Bez ruchu HTTP cechy `http_*` mają 0, a brak ewaluacji reguły to NaN. Inny adres Prometheusa: `--prometheus-url`. Testy pakietu (`aiops/tests`, nagrane odpowiedzi Prometheusa) uruchamia `make unit`.
+Eksport wypisuje JSON z zakresem, liczbą kroków na usługę, liczbą cech i najdłuższą luką (`max_gap_seconds`, w sekundach). Bez ruchu HTTP cechy `http_*` mają 0, a brak ewaluacji pozostałych reguł to NaN. Inny adres Prometheusa: `--prometheus-url`. Testy pakietu (`aiops/tests`, nagrane odpowiedzi Prometheusa) uruchamia `make unit`.
 
 ## Jak pracujemy
 
