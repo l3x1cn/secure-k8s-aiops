@@ -1,18 +1,18 @@
 # Backlog
 
-Zestawienie zadań T01–T36 na 24.11.2026 (`main` po T17 i T26; T20 w PR #67). Źródłem prawdy są [Issues](https://github.com/l3x1cn/secure-k8s-aiops/issues) i [Milestones](https://github.com/l3x1cn/secure-k8s-aiops/milestones) — ten plik to migawka na potrzeby przeglądu. Kontrakty zadań opisuje [architektura](architektura.md), plan sprintów i definicja ukończenia — [karta projektu](karta-projektu.md#plan-sprintów).
+Zestawienie zadań T01–T36 na 27.11.2026 (`main` po T17, T20 i T26; T21 w PR #75). Źródłem prawdy są [Issues](https://github.com/l3x1cn/secure-k8s-aiops/issues) i [Milestones](https://github.com/l3x1cn/secure-k8s-aiops/milestones) — ten plik to migawka na potrzeby przeglądu. Kontrakty zadań opisuje [architektura](architektura.md), plan sprintów i definicja ukończenia — [karta projektu](karta-projektu.md#plan-sprintów).
 
 Legenda: **KO** — zadanie dostarcza dowód dla kryterium odbioru z karty projektu; **MVP** albo **rozszerzenie** — zakres według karty; kolumna „Zależy od” to kolejność prac (zadanie nie startuje przed zamknięciem zależności).
 
 ## Podsumowanie
 
-- Zamknięte: 20 z 36 zadań, w tym 20 z 32 zadań MVP.
-- W toku: T20 (PR #67). Zostały: Sprint 2 — T21; Sprint 3 — T22–T25, T27–T29; Sprint 4 — T30–T36.
+- Zamknięte: 21 z 36 zadań, w tym 21 z 32 zadań MVP.
+- W toku: T21 (PR #75). Zostały: Sprint 3 — T22–T25, T27–T29; Sprint 4 — T30–T36.
 
 | Sprint | Zamknięte | Razem |
 |---|---|---|
 | Sprint 1 — Fundament | 9 | 9 |
-| Sprint 2 — Bezpieczeństwo i obserwowalność | 10 | 12 |
+| Sprint 2 — Bezpieczeństwo i obserwowalność | 11 | 12 |
 | Sprint 3 — Detekcja AI i alerty | 1 | 8 |
 | Sprint 4 — Raport, demo, rozszerzenia | 0 | 7 |
 
@@ -44,8 +44,8 @@ Legenda: **KO** — zadanie dostarcza dowód dla kryterium odbioru z karty proje
 | [T17](https://github.com/l3x1cn/secure-k8s-aiops/issues/17) Logi i zdarzenia: Loki + Grafana Alloy | Logi kontenerów i zdarzenia Kubernetes w Grafanie, gotowe do analizy. | R1 Platforma | T16 | MVP | tak | zamknięte |
 | [T18](https://github.com/l3x1cn/secure-k8s-aiops/issues/18) Generator ruchu Locust | Stały, realistyczny ruch, na którym uczy się detektor. | R3 Obserwowalność | T05 | MVP |  | zamknięte |
 | [T19](https://github.com/l3x1cn/secure-k8s-aiops/issues/19) Alerty regułowe, alert bezpieczeństwa i Mailpit | Alert dociera do zespołu, także przy próbie niedozwolonego połączenia. | R3 Obserwowalność | T16, T12 | MVP | tak | zamknięte |
-| [T20](https://github.com/l3x1cn/secure-k8s-aiops/issues/20) Eksport danych i cechy z Prometheusa | Zbiór danych bazowych do uczenia i analizy. | R4 AI/ML | T16, T18 | MVP |  | w toku (PR #67) |
-| [T21](https://github.com/l3x1cn/secure-k8s-aiops/issues/21) Orkiestrator scenariuszy awarii z etykietami | Powtarzalne przebiegi awarii ze znanymi oknami czasu (etykiety prawdy) do oceny detekcji. | R4 AI/ML | T08, T12 | MVP |  | do zrobienia |
+| [T20](https://github.com/l3x1cn/secure-k8s-aiops/issues/20) Eksport danych i cechy z Prometheusa | Zbiór danych bazowych do uczenia i analizy. | R4 AI/ML | T16, T18 | MVP |  | zamknięte |
+| [T21](https://github.com/l3x1cn/secure-k8s-aiops/issues/21) Orkiestrator scenariuszy awarii z etykietami | Powtarzalne przebiegi awarii ze znanymi oknami czasu (etykiety prawdy) do oceny detekcji. | R4 AI/ML | T08, T12 | MVP |  | w toku (PR #75) |
 
 ## Sprint 3 — Detekcja AI i alerty
 
