@@ -233,7 +233,7 @@ def fault_router(
     # Endpointy synchroniczne: zatrzymanie poprzedniej awarii czeka na jej wątek,
     # więc nie może blokować pętli zdarzeń.
     @router.post("/cpu", status_code=status.HTTP_202_ACCEPTED)
-    def cpu(seconds: Seconds = 120) -> FaultStarted:
+    def cpu(seconds: Seconds = 240) -> FaultStarted:
         return FaultStarted(fault="cpu", ends_at=controller.start_cpu(seconds))
 
     @router.post("/memory", status_code=status.HTTP_202_ACCEPTED)

@@ -114,6 +114,18 @@ $FR stop                                           # koniec bieżącej awarii
 $FR spike --users 50 --seconds 180                 # S6: skok ruchu na frontend
 ```
 
+### Scenariusze awarii (chaos/run.py)
+
+Orkiestrator uruchamia scenariusze S1–S7 przez `kubectl exec` w `loadgen/fault-runner` i `intruder/intruder` i zapisuje ich okna (etykiety prawdy do ewaluacji detekcji) w `reports/runs/<run-id>/` (poza git). Kontrakt: [docs/architektura.md](docs/architektura.md#scenariusze-awarii).
+
+```bash
+uv run --locked python chaos/run.py                                    # S1–S7, przerwa 10 min: ok. 1 h 41 min
+uv run --locked python chaos/run.py --scenarios S1,S3,S7 --gap 4m --run-id e2e
+cat reports/runs/e2e/labels.jsonl reports/runs/e2e/run.json            # okna i commit przebiegu
+```
+
+Przerwa `--gap` trwa przed każdym scenariuszem i po ostatnim. Każde okno dostaje w Grafanie adnotację z tagiem `scenario`; dashboard pokazuje ją zapytaniem adnotacji ze źródłem `-- Grafana --` i filtrem po tagu `scenario` (ustawienia dashboardu → Annotations). Ctrl+C zatrzymuje bieżący scenariusz (`fault-runner stop`, w S6 i S7 także proces w podzie), zamyka jego okno i kończy przebieg kodem 130.
+
 ### Alerty (Mailpit)
 
 Alertmanager wysyła każdy alert e-mailem do Mailpit: http://localhost:8025 (UI, NodePort 30825). Alerty regułowe są w `deploy/observability/alert-rules.yaml`, a routing w `alertmanager.config` w `deploy/observability/values/kube-prometheus-stack.yaml` (zmiana: `make observability`). Opis i progi: [docs/architektura.md](docs/architektura.md#alerty).
