@@ -18,6 +18,7 @@ No blocking defect. `make lint` is clean and `make unit` gives 140 passed. `chao
 Open facts from delivery verification, reflected in DOC-001: HighCPU did not fire for S1 = 4 min (CPU ratio dipped to 0.71 and 0.75 at +120 s and +150 s, which reset `for: 2m`); QA plan scenario BE-04 failed for the same reason, and its FE-01 edge 1 is a plan flaw (the tag filter is `target.tags`).
 
 ### [MEDIUM] MAINT-001: Scenario durations are written down separately 2–3 times
+**Status:** ✅ Fixed (2026-11-27)
 
 **ID:** MAINT-001
 **Location:** `chaos/run.py:55`
@@ -34,13 +35,15 @@ A one-sided edit with its matching test keeps the suite green and gives a `label
 
 ```python
 # Before
-Scenario("S1", "cpu", "orders", 240, (_fault(0, "cpu", "--seconds", "240"),)),
+(Scenario("S1", "cpu", "orders", 240, (_fault(0, "cpu", "--seconds", "240"),)),)
 SPIKE = f"echo $$ > {SPIKE_PID} && exec fault-runner spike --users 50 --seconds 180"
+
 
 # After
 def _orders_fault(id_: str, name: str, seconds: int, *params: str) -> Scenario:
     step = _fault(0, name, "--seconds", str(seconds), *params)
     return Scenario(id_, name, "orders", seconds, (step,))
+
 
 SPIKE_SECONDS = 180
 SCAN_SECONDS = 120
@@ -51,6 +54,7 @@ Derive the `--seconds` argument and the S6 and S7 timeouts from the same number.
 ---
 
 ### [MEDIUM] DOC-001: Documentation says S1 = 4 min keeps HighCPU above the threshold for 204 s; the measured run contradicts it
+**Status:** ✅ Fixed (2026-11-27)
 
 **ID:** DOC-001
 **Location:** `docs/detekcja.md:80`
@@ -58,6 +62,9 @@ Derive the `--seconds` argument and the S6 and S7 timeouts from the same number.
 **Effort:** easy
 **Drift-class:** decision
 **Fix-policy:** needs-decision
+**Decision:** A — Documentation only: in docs/detekcja.md:80 replace the whole bullet with this exact text (without the enclosing „ ”): „- **S1 i HighCPU (T19, T21).** W prototypie S1 trwał 2 min i reguły nie wykryły go ani razu: `HighCPU` ma `for: 2m`, więc warunek musi być spełniony w 5 kolejnych ewaluacjach co 30 s (120–150 s zależnie od fazy ewaluacji). T21 wydłużył S1 do 4 min na podstawie modelu, w którym przy pełnym obciążeniu `service:cpu_usage_ratio_of_limit` (rate z 1 min) przekracza 0,8 od ok. 48 s po starcie awarii do ok. 12 s po jej końcu, czyli przez czas awarii minus 36 s (204 s przy 4 min). Pomiar w przebiegu `t21-pelny` (2026-11-24) temu przeczy: `service:cpu_usage_ratio_of_limit{service="orders"}` co 30 s od startu S1 wynosił 0,04; 0,01; 0,40; 1,00; 0,71; 0,75; 1,00; 1,00; 1,00; 1,00; 0,45; 0,01; 0,02. Spadek do 0,71 i 0,75 po 120 i 150 s wyzerował licznik `for`, więc `HighCPU` był tylko w stanie pending (najwyżej ok. 105 s), nie wystrzelił i nie wysłał e-maila: 4 min nie zawsze wystarczają. Dłuższy S1, krótszy `for` w `HighCPU` albo przyjęcie, że reguły nie wykrywają S1, to osobna decyzja; T21 nie zmienia reguły `HighCPU`.” and in docs/architektura.md:355 replace only the first sentence (from `S1 trwa 4 min` through `([docs/detekcja.md](detekcja.md#ryzyka-dla-innych-zadań)).`) with this exact text (without the enclosing „ ”): „S1 trwa 4 min, bo `HighCPU` (`for: 2m`) potrzebuje 5 kolejnych ewaluacji powyżej progu, a według modelu z T21 `service:cpu_usage_ratio_of_limit` (rate z 1 min) przekracza 0,8 przez czas awarii minus ok. 36 s. W przebiegu `t21-pelny` wskaźnik spadł po 120 i 150 s poniżej 0,8 i `HighCPU` nie wystrzelił (pomiar i otwarta decyzja: [docs/detekcja.md](detekcja.md#ryzyka-dla-innych-zadań)).” keeping the following sentence that starts `S7 celuje w IP poda` unchanged; leave the S1 row at docs/architektura.md:347, chaos/run.py, services/orders/src/orders/faults.py, the tests and deploy/observability/alert-rules.yaml unchanged. [user, 2026-11-27]
+**Verification-plan:** (1) grep `204 s powyżej progu|wystrzeliłby tylko w ok\. 80%` in docs/detekcja.md → empty; (2) grep `a .service:cpu_usage_ratio_of_limit. \(rate z 1 min\) przekracza` in docs/architektura.md → empty; (3) read docs/detekcja.md:80 → lists the 13 measured values 0,04 … 0,02 in order and names t21-pelny, the `for` reset and that HighCPU did not fire (soft); (4) read docs/architektura.md:355 → says HighCPU did not fire in t21-pelny, links detekcja.md#ryzyka-dla-innych-zadań and keeps the `S7 celuje w IP poda` sentence (soft); (5) grep `^## Ryzyka dla innych zadań$` in docs/detekcja.md → one match; (6) grep `HighCPU, AnomalyDetected` in docs/architektura.md → S1 row at line 347 unchanged; (7) `git diff --stat -- services/orders deploy/observability` → empty
+**Verification:** hard — 7 checks run by the orchestrator, all matched: 2 greps for the removed claims (empty), the 13 measured values and the `for` reset read back at docs/detekcja.md:80, the changed sentence and the kept S7 sentence at docs/architektura.md:355, the `Ryzyka dla innych zadań` anchor (1 match), the S1 row at docs/architektura.md:347 unchanged, no diff in services/orders and deploy/observability
 
 **Problem:**
 `docs/detekcja.md:80` and `docs/architektura.md:355` state that `service:cpu_usage_ratio_of_limit` stays above 0.8 for the fault time minus about 36 s (204 s) and present 4 min as sufficient for `HighCPU` (`for: 2m`). The S1 window of run `t21-pelny` measured `service:cpu_usage_ratio_of_limit{service="orders"}` every 30 s from the start: 0.04, 0.01, 0.40, 1.00, 0.71, 0.75, 1.00, 1.00, 1.00, 1.00, 0.45. The dip to 0.71 and 0.75 at +120 s and +150 s reset the `for` timer; `HighCPU` stayed pending (about 105 s at most), never fired and sent no Mailpit message. QA scenario BE-04 failed twice for the same reason. The delivery plan (contingency for verification step 5) asks to record the measured values in `docs/detekcja.md`; that was not done.
@@ -71,6 +78,7 @@ Record the measured series in `docs/detekcja.md` and state that 4 min is not eno
 ---
 
 ### [LOW] SEC-001: Grafana admin credentials go to whichever socket answers `localhost` first
+**Status:** ✅ Fixed (2026-11-27)
 
 **ID:** SEC-001
 **Location:** `chaos/run.py:36`
@@ -101,6 +109,7 @@ Update the comment on line 35 and the sentence "Grafana pod http://localhost:300
 ---
 
 ### [LOW] MAINT-002: Exit codes and stderr are handled in two places; Ctrl+C before the run prints nothing
+**Status:** ✅ Fixed (2026-11-27)
 
 **ID:** MAINT-002
 **Location:** `chaos/run.py:224`
@@ -133,6 +142,7 @@ except KeyboardInterrupt:
 ---
 
 ### [LOW] MAINT-003: Four contract error paths have no unit test
+**Status:** ✅ Fixed (2026-11-27)
 
 **ID:** MAINT-003
 **Location:** `chaos/run.py:302`
@@ -163,6 +173,7 @@ Add similar tests: a `FakeCluster` returning empty stdout for `get pods` (S7 fai
 ---
 
 ### [LOW] MAINT-004: Ctrl+C during the closing Grafana POST leaves a window without annotation
+**Status:** ✅ Fixed (2026-11-27)
 
 **ID:** MAINT-004
 **Location:** `chaos/run.py:323`
@@ -181,6 +192,7 @@ Do the label write and the POST inside the SIGINT-ignored section that `_abort` 
 ---
 
 ### [LOW] MAINT-005: Default `--gap`, stdout progress lines and annotation text are not asserted by any test
+**Status:** ✅ Fixed (2026-11-27)
 
 **ID:** MAINT-005
 **Location:** `chaos/tests/test_run.py:161`

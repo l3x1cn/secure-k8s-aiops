@@ -23,17 +23,19 @@ import signal
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import FrameType
 from typing import Protocol
 
 import httpx
 
 KUBE_CONTEXT = os.environ.get("KUBE_CONTEXT", "kind-secure-k8s-aiops")
-# localhost:3000 → NodePort 30300 Grafany (extraPortMappings w platform/kind/cluster.yaml).
-GRAFANA_URL = "http://localhost:3000"
+# 127.0.0.1:3000 → NodePort 30300 Grafany (listenAddress w platform/kind/cluster.yaml).
+GRAFANA_URL = "http://127.0.0.1:3000"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RUNS_DIR = REPO_ROOT / "reports" / "runs"
 
@@ -51,13 +53,19 @@ INTRUDER: Pod = ("intruder", "intruder")
 
 SPIKE_PID = "/tmp/chaos-s6.pid"
 SCAN_PID = "/tmp/chaos-s7.pid"
+# Czas trwania S6 i S7: okno, argument w podzie i timeout polecenia liczone z tych stałych.
+SPIKE_SECONDS = 180
+SCAN_SECONDS = 120
 # exec: PID z pliku należy do procesu fault-runner, więc kill kończy skok ruchu.
-SPIKE = f"echo $$ > {SPIKE_PID} && exec fault-runner spike --users 50 --seconds 180"
+SPIKE = (
+    f"echo $$ > {SPIKE_PID} && "
+    f"exec fault-runner spike --users 50 --seconds {SPIKE_SECONDS}"
+)
 # $1 to IP poda orders: usługa orders wystawia tylko port 8080, więc odrzucenie
 # POLICY_DENIED na pozostałych portach daje tylko połączenie prosto do poda.
 # Co sekundę 6 prób naraz; każda trwa najwyżej 1 s, bo Cilium porzuca SYN.
 SCAN = f"""echo $$ > {SCAN_PID}
-end=$(($(date +%s) + 120))
+end=$(($(date +%s) + {SCAN_SECONDS}))
 while [ "$(date +%s)" -lt "$end" ]; do
   for port in 8080 22 80 443 5432 6379; do
     curl -s -o /dev/null -m 1 "http://$1:$port/" &
@@ -103,31 +111,19 @@ def _kill(pod: Pod, pid_file: str) -> Step:
     return Step(0, pod, argv, timeout=CLEANUP_TIMEOUT)
 
 
+def _orders_fault(id_: str, name: str, seconds: int, *params: str) -> Scenario:
+    """Scenariusz usterki w orders: okno i `--seconds` z jednej liczby."""
+    step = _fault(0, name, "--seconds", str(seconds), *params)
+    return Scenario(id_, name, "orders", seconds, (step,))
+
+
 SCENARIOS = {
     scenario.id: scenario
     for scenario in (
-        Scenario("S1", "cpu", "orders", 240, (_fault(0, "cpu", "--seconds", "240"),)),
-        Scenario(
-            "S2",
-            "memory",
-            "orders",
-            180,
-            (_fault(0, "memory", "--seconds", "180", "--param", "target_ratio=0.9"),),
-        ),
-        Scenario(
-            "S3",
-            "errors",
-            "orders",
-            180,
-            (_fault(0, "errors", "--seconds", "180", "--param", "ratio=0.5"),),
-        ),
-        Scenario(
-            "S4",
-            "latency",
-            "orders",
-            180,
-            (_fault(0, "latency", "--seconds", "180", "--param", "ms=500"),),
-        ),
+        _orders_fault("S1", "cpu", 240),
+        _orders_fault("S2", "memory", 180, "--param", "target_ratio=0.9"),
+        _orders_fault("S3", "errors", 180, "--param", "ratio=0.5"),
+        _orders_fault("S4", "latency", 180, "--param", "ms=500"),
         Scenario(
             "S5",
             "crash",
@@ -139,10 +135,13 @@ SCENARIOS = {
             "S6",
             "spike",
             "frontend",
-            180,
+            SPIKE_SECONDS,
             (
                 Step(
-                    0, FAULT_RUNNER, ("sh", "-c", SPIKE), timeout=180 + COMMAND_TIMEOUT
+                    0,
+                    FAULT_RUNNER,
+                    ("sh", "-c", SPIKE),
+                    timeout=SPIKE_SECONDS + COMMAND_TIMEOUT,
                 ),
             ),
             abort=_kill(FAULT_RUNNER, SPIKE_PID),
@@ -151,13 +150,13 @@ SCENARIOS = {
             "S7",
             "scan",
             "orders",
-            120,
+            SCAN_SECONDS,
             (
                 Step(
                     0,
                     INTRUDER,
                     ("sh", "-c", SCAN, "scan"),
-                    timeout=120 + COMMAND_TIMEOUT,
+                    timeout=SCAN_SECONDS + COMMAND_TIMEOUT,
                     orders_ip=True,
                 ),
             ),
@@ -200,6 +199,31 @@ class RunError(Exception):
     """Błąd, który kończy przebieg kodem 1."""
 
 
+@contextmanager
+def _sigint_deferred() -> Iterator[None]:
+    """Ctrl+C w bloku czeka na jego koniec, potem wraca jako KeyboardInterrupt.
+
+    Gdy SIGINT jest już ignorowany (`Orchestrator._abort`), blok nic nie zmienia.
+    """
+    previous = signal.getsignal(signal.SIGINT)
+    if previous is signal.SIG_IGN:
+        yield
+        return
+    interrupted = False
+
+    def note(signum: int, frame: FrameType | None) -> None:
+        nonlocal interrupted
+        interrupted = True
+
+    signal.signal(signal.SIGINT, note)
+    try:
+        yield
+    finally:
+        signal.signal(signal.SIGINT, previous)
+    if interrupted:
+        raise KeyboardInterrupt
+
+
 class Orchestrator:
     def __init__(
         self,
@@ -221,7 +245,8 @@ class Orchestrator:
         # Otwarte okno: scenariusz i początek.
         self.current: tuple[Scenario, datetime] | None = None
 
-    def run(self, scenarios: Sequence[Scenario], gap: int) -> int:
+    def run(self, scenarios: Sequence[Scenario], gap: int) -> None:
+        """Przerwanie i RunError: sprzątanie (`_abort`), potem wyjątek do `main`."""
         self.directory.mkdir(parents=True)
         self.labels.touch()
         self._write_run(end=None)
@@ -231,16 +256,10 @@ class Orchestrator:
                 self.clock.sleep(gap)
                 self._execute(scenario)
             self.clock.sleep(gap)
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, RunError):
             self._abort()
-            print("interrupted", file=sys.stderr)
-            return 130
-        except RunError as exc:
-            self._abort()
-            print(exc, file=sys.stderr)
-            return 1
+            raise
         self._write_run(end=self._now())
-        return 0
 
     def _execute(self, scenario: Scenario) -> None:
         start = self._now()
@@ -317,22 +336,26 @@ class Orchestrator:
         )
 
     def _close(self) -> None:
-        """Zapisuje otwarte okno do labels.jsonl i Grafany; bez okna nic nie robi."""
+        """Zapisuje otwarte okno do labels.jsonl i Grafany; bez okna nic nie robi.
+
+        Ctrl+C w trakcie zapisu czeka na jego koniec, żeby okno nie zostało bez adnotacji.
+        """
         if self.current is None:
             return
         (scenario, start), self.current = self.current, None
-        end = self._now()
-        label = {
-            "scenario": scenario.id,
-            "name": scenario.name,
-            "target": scenario.target,
-            "start": start.isoformat(),
-            "end": end.isoformat(),
-        }
-        with self.labels.open("a") as labels:
-            labels.write(json.dumps(label) + "\n")
-        self._say(f"end {scenario.id} {scenario.name} {scenario.target}")
-        self._annotate(scenario, start, end)
+        with _sigint_deferred():
+            end = self._now()
+            label = {
+                "scenario": scenario.id,
+                "name": scenario.name,
+                "target": scenario.target,
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+            }
+            with self.labels.open("a") as labels:
+                labels.write(json.dumps(label) + "\n")
+            self._say(f"end {scenario.id} {scenario.name} {scenario.target}")
+            self._annotate(scenario, start, end)
 
     def _annotate(self, scenario: Scenario, start: datetime, end: datetime) -> None:
         annotation = {
@@ -482,13 +505,14 @@ def main(
             orchestrator = Orchestrator(
                 directory, run_id, git_commit(), kubectl, clock, grafana
             )
-            return orchestrator.run(args.scenarios, args.gap)
+            orchestrator.run(args.scenarios, args.gap)
     except RunError as exc:
         print(exc, file=sys.stderr)
         return 1
     except KeyboardInterrupt:
-        # Przerwanie przed startem przebiegu: w klastrze nic jeszcze nie działa.
+        print("interrupted", file=sys.stderr)
         return 130
+    return 0
 
 
 def _scenarios(value: str) -> tuple[Scenario, ...]:

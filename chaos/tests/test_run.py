@@ -2,6 +2,7 @@ import base64
 import importlib.util
 import json
 import re
+import signal
 import subprocess
 import sys
 from collections.abc import Sequence
@@ -58,6 +59,9 @@ class FakeCluster:
         self.calls: list[tuple[datetime, tuple[str, ...]]] = []
         # Fragment polecenia → kody wyjścia kolejnych pasujących wywołań (potem 0).
         self.codes: dict[str, list[int]] = {}
+        # Fragment polecenia, na którym kubectl dostaje Ctrl+C (raz).
+        self.interrupt_on: str | None = None
+        self.orders_ip = ORDERS_IP
         self.secret = json.dumps(
             {"data": {"admin-user": b64("admin"), "admin-password": b64("sekret")}}
         )
@@ -65,11 +69,14 @@ class FakeCluster:
     def __call__(self, args: Sequence[str], timeout: float):
         args = tuple(args)
         self.calls.append((self.clock.now(), args))
+        command = " ".join(args)
+        if self.interrupt_on is not None and self.interrupt_on in command:
+            self.interrupt_on = None
+            raise KeyboardInterrupt
         if args[:3] == ("get", "secret", "grafana-admin"):
             return completed(stdout=self.secret) if self.secret else completed(1)
         if args[:2] == ("get", "pods"):
-            return completed(stdout=ORDERS_IP)
-        command = " ".join(args)
+            return completed(stdout=self.orders_ip)
         for fragment, codes in self.codes.items():
             if fragment in command and codes:
                 code = codes.pop(0)
@@ -95,6 +102,7 @@ class FakeGrafana:
         self.org_status = 200
         self.annotation_status = 200
         self.unreachable = False
+        self.sigint_on_annotation = False
         self.requests: list[httpx.Request] = []
         self.annotations: list[dict] = []
 
@@ -105,6 +113,9 @@ class FakeGrafana:
         if (request.method, request.url.path) == ("GET", "/api/org"):
             return httpx.Response(self.org_status, json={"id": 1})
         if (request.method, request.url.path) == ("POST", "/api/annotations"):
+            if self.sigint_on_annotation:
+                self.sigint_on_annotation = False
+                signal.raise_signal(signal.SIGINT)
             self.annotations.append(json.loads(request.content))
             return httpx.Response(self.annotation_status, json={"id": 1})
         return httpx.Response(404)
@@ -158,7 +169,7 @@ def last_exec(env: Env) -> tuple[str, tuple[str, ...]]:
 
 
 def test_full_run_writes_seven_windows_separated_by_gap(env):
-    assert start(env, "--gap", "10m") == 0
+    assert start(env) == 0
 
     run_dir = env.runs / "20261124T100000Z"
     labels = windows(run_dir)
@@ -190,7 +201,7 @@ def test_full_run_writes_seven_windows_separated_by_gap(env):
     assert re.fullmatch(r"[0-9a-f]{40}", run["commit"])
 
 
-def test_every_window_gets_a_scenario_annotation(env):
+def test_every_window_gets_a_scenario_annotation(env, capsys):
     assert start(env, "--scenarios", "S3,S7", "--gap", "1m", "--run-id", "t21") == 0
 
     labels = windows(env.runs / "t21")
@@ -202,8 +213,21 @@ def test_every_window_gets_a_scenario_annotation(env):
         )
         for w in labels
     ]
+    assert [a["text"] for a in env.grafana.annotations] == [
+        "S3 errors → orders, przebieg t21",
+        "S7 scan → orders, przebieg t21",
+    ]
+    progress = [line.split(" ", 1)[1] for line in capsys.readouterr().out.splitlines()]
+    assert progress == [
+        f"run t21 {env.runs / 't21'}",
+        "start S3 errors orders",
+        "end S3 errors orders",
+        "start S7 scan orders",
+        "end S7 scan orders",
+    ]
     auth = env.grafana.requests[-1].headers["Authorization"]
     assert auth == f"Basic {b64('admin:sekret')}"
+    assert {r.url.host for r in env.grafana.requests} == {"127.0.0.1"}
 
 
 @pytest.mark.parametrize(
@@ -305,6 +329,52 @@ def test_ctrl_c_kills_spike_and_scan_in_their_pod(env, scenario, pod, pid_file):
     assert (window["end"] - window["start"]).total_seconds() == 30
 
 
+def test_failed_cleanup_command_is_only_a_warning(env, capsys):
+    env.cluster.codes["read pid"] = [1]
+    env.clock.interrupt_at = START + timedelta(seconds=30)
+
+    assert start(env, "--scenarios", "S6", "--gap", "0s", "--run-id", "t21") == 130
+
+    err = capsys.readouterr().err
+    assert "warning: sh -c" in err
+    assert "in loadgen/fault-runner failed" in err
+    assert last_exec(env) == ("loadgen/fault-runner", ("fault-runner", "stop"))
+    [window] = windows(env.runs / "t21")
+    assert (window["end"] - window["start"]).total_seconds() == 30
+
+
+def test_ctrl_c_before_run_starts_exits_without_cleanup(env, capsys):
+    env.cluster.interrupt_on = "get secret"
+
+    assert start(env, "--run-id", "t21") == 130
+
+    assert "interrupted" in capsys.readouterr().err
+    assert env.cluster.execs() == []
+    assert not (env.runs / "t21").exists()
+
+
+def test_scan_without_running_orders_pod_stops_run(env, capsys):
+    env.cluster.orders_ip = ""
+
+    assert start(env, "--scenarios", "S7", "--gap", "0s", "--run-id", "t21") == 1
+
+    assert "S7 scan failed: no running orders pod" in capsys.readouterr().err
+    assert last_exec(env) == ("loadgen/fault-runner", ("fault-runner", "stop"))
+    assert env.cluster.execs()[0][1] == "intruder/intruder"
+
+
+def test_unreadable_git_commit_stops_before_any_scenario(
+    env, capsys, monkeypatch, tmp_path
+):
+    monkeypatch.setattr(chaos_run, "REPO_ROOT", tmp_path)
+
+    assert start(env, "--run-id", "t21") == 1
+
+    assert "cannot read git commit" in capsys.readouterr().err
+    assert env.cluster.execs() == []
+    assert not (env.runs / "t21").exists()
+
+
 def test_ctrl_c_in_gap_only_stops_faults(env):
     env.clock.interrupt_at = START + timedelta(seconds=30)
 
@@ -321,6 +391,20 @@ def test_failed_annotation_is_only_a_warning(env, capsys):
 
     assert len(windows(env.runs / "t21")) == 1
     assert "annotation for S1 failed" in capsys.readouterr().err
+
+
+def test_ctrl_c_during_annotation_post_still_delivers_it(env, capsys):
+    env.grafana.sigint_on_annotation = True
+
+    code = start(env, "--scenarios", "S1,S2", "--gap", "0s", "--run-id", "t21")
+
+    assert code == 130
+    assert "interrupted" in capsys.readouterr().err
+    labels = windows(env.runs / "t21")
+    assert [w["scenario"] for w in labels] == ["S1"]
+    assert [a["tags"][1] for a in env.grafana.annotations] == ["S1"]
+    assert last_exec(env) == ("loadgen/fault-runner", ("fault-runner", "stop"))
+    assert utc(run_json(env.runs / "t21")["end"]) == labels[0]["end"]
 
 
 @pytest.mark.parametrize("problem", ["no secret", "unauthorized", "unreachable"])
